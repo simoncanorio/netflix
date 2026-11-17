@@ -90,12 +90,10 @@ function switchSection(sectionId) {
 
   const homeSec = document.querySelector(".section-home");
   const mylistSec = document.getElementById("section-mylist");
-  const gemsSec = document.getElementById("section-gems");
   const bizSec = document.getElementById("section-business");
 
   homeSec.style.display = "none";
   if (mylistSec) mylistSec.style.display = "none";
-  if (gemsSec) gemsSec.style.display = "none";
   if (bizSec) bizSec.classList.remove("active");
 
   if (sectionId === "business") {
@@ -104,9 +102,6 @@ function switchSection(sectionId) {
   } else if (sectionId === "mylist") {
     mylistSec.style.display = "block";
     loadMyListSection();
-  } else if (sectionId === "gems") {
-    gemsSec.style.display = "block";
-    loadHiddenGemsSection("all");
   } else {
     homeSec.style.display = "block";
     if (STATE.pendingRecData) {
@@ -897,11 +892,12 @@ async function loadBusinessSection() {
     renderDubbingBarPlotly(data.ranking);
     renderHistoryErasPlotly(data.tech_eras_history || []);
 
-    // 3. Inicializar el Inspector Ejecutivo con Corea del Sur (o el top 1)
+    // 3. Inicializar el Inspector Ejecutivo con Corea del Sur (o el top 1) y el Comparador Head-to-Head
     const krRow = data.ranking.find(r => r.codigo_pais === "KR") || data.ranking[0];
     if (krRow) {
       inspectCountryExecutiveCard(krRow);
     }
+    initHeadToHeadComparator(data.ranking);
 
     // 4. Renderizar Cascada Poblacional (Waterfall Funnel)
     const funnelContainer = document.getElementById("waterfall-funnel-container");
@@ -991,6 +987,13 @@ async function inspectCountryExecutiveCard(countryRow) {
   const btnOpen = document.getElementById("insp-btn-open-carousel");
   btnOpen.onclick = () => loadCountryCarousel(countryRow.codigo_pais, countryRow.pais);
 
+  // Actualizar Simulador de CAPEX / ROI para el país seleccionado
+  const roiSlider = document.getElementById("roi-budget-slider");
+  if (roiSlider) {
+    updateCountryROISimulator(countryRow, parseInt(roiSlider.value || "50", 10));
+    roiSlider.oninput = (e) => updateCountryROISimulator(countryRow, parseInt(e.target.value, 10));
+  }
+
   // Cargar las 6 mejores películas del país en miniatura dentro del inspector
   const miniContainer = document.getElementById("insp-mini-movies");
   miniContainer.innerHTML = `<div style="color:#888; font-size:12px; grid-column: 1 / -1;">Cargando títulos emblemáticos de ${countryRow.pais}...</div>`;
@@ -1013,6 +1016,85 @@ async function inspectCountryExecutiveCard(countryRow) {
   } catch (err) {
     console.error("[Country Inspector] Error:", err);
   }
+}
+
+function updateCountryROISimulator(countryRow, budgetMillions) {
+  const labelEl = document.getElementById("roi-budget-label");
+  const titlesEl = document.getElementById("roi-titles-val");
+  const hoursEl = document.getElementById("roi-hours-val");
+  const savingEl = document.getElementById("roi-saving-val");
+  if (!labelEl || !countryRow) return;
+
+  labelEl.textContent = `USD ${budgetMillions}M`;
+  // Costo medio estimado por producción según tipo de mercado (frente a USD 18M en Hollywood)
+  const isTier1 = countryRow.estrategia_netflix.includes("Tier 1");
+  const avgCostPerTitle = isTier1 ? 6.2 : 3.8;
+  const estTitles = Math.max(1, Math.round(budgetMillions / avgCostPerTitle));
+
+  // Horas proyectadas basadas en alcance de exportación, calidad bayesiana y efecto doblaje
+  const reachFactor = (countryRow.promedio_regiones || 12) / 13.6;
+  const qualityFactor = (countryRow.rating_bayesiano_medio || 6.6) / 6.51;
+  const estHours = Math.round(budgetMillions * 5.8 * reachFactor * qualityFactor);
+
+  // Ahorro porcentual frente a producir el mismo volumen en EE.UU.
+  const savingPct = Math.min(78, Math.max(35, Math.round((1 - (avgCostPerTitle / 16.5)) * 100)));
+
+  if (titlesEl) titlesEl.textContent = `~${estTitles} producciones`;
+  if (hoursEl) hoursEl.textContent = `~${estHours.toLocaleString()}M Horas`;
+  if (savingEl) savingEl.textContent = `-${savingPct}% Costo/Hora`;
+}
+
+function initHeadToHeadComparator(ranking) {
+  const selA = document.getElementById("h2h-select-a");
+  const selB = document.getElementById("h2h-select-b");
+  const box = document.getElementById("h2h-comparison-box");
+  if (!selA || !selB || !box || !ranking || ranking.length < 2) return;
+
+  selA.innerHTML = "";
+  selB.innerHTML = "";
+  ranking.slice(0, 25).forEach(r => {
+    const optA = document.createElement("option");
+    optA.value = r.codigo_pais;
+    optA.textContent = r.pais;
+    selA.appendChild(optA);
+
+    const optB = document.createElement("option");
+    optB.value = r.codigo_pais;
+    optB.textContent = r.pais;
+    selB.appendChild(optB);
+  });
+
+  selA.value = ranking.find(r => r.codigo_pais === "KR") ? "KR" : ranking[0].codigo_pais;
+  selB.value = ranking.find(r => r.codigo_pais === "AR") ? "AR" : (ranking[1]?.codigo_pais || ranking[0].codigo_pais);
+
+  const renderH2H = () => {
+    const rowA = ranking.find(r => r.codigo_pais === selA.value) || ranking[0];
+    const rowB = ranking.find(r => r.codigo_pais === selB.value) || ranking[1];
+    const winner = rowA.potential_score >= rowB.potential_score ? rowA : rowB;
+
+    box.innerHTML = `
+      <div style="display:grid; grid-template-columns: 1fr auto 1fr; gap:10px; text-align:center; align-items:center; margin-bottom:8px;">
+        <div><strong style="color:#fff;">${rowA.pais}</strong><div style="color:#46d369; font-weight:bold;">★ ${rowA.rating_bayesiano_medio} Bayes</div></div>
+        <div style="color:#777; font-size:10px; text-transform:uppercase;">Calidad Crítica</div>
+        <div><strong style="color:#fff;">${rowB.pais}</strong><div style="color:#46d369; font-weight:bold;">★ ${rowB.rating_bayesiano_medio} Bayes</div></div>
+
+        <div style="color:#e50914; font-weight:bold;">${rowA.promedio_regiones} países</div>
+        <div style="color:#777; font-size:10px; text-transform:uppercase;">Alcance Exportación</div>
+        <div style="color:#e50914; font-weight:bold;">${rowB.promedio_regiones} países</div>
+
+        <div style="color:#ffc107; font-weight:bold;">${rowA.multiplicador_doblaje}x (${rowA.millones_horas_netflix}M h)</div>
+        <div style="color:#777; font-size:10px; text-transform:uppercase;">Doblaje & Horas</div>
+        <div style="color:#ffc107; font-weight:bold;">${rowB.multiplicador_doblaje}x (${rowB.millones_horas_netflix}M h)</div>
+      </div>
+      <div style="border-top:1px solid #262626; padding-top:6px; font-size:11px; color:#bbb; text-align:center;">
+        🏆 <strong>Dictamen:</strong> <span style="color:#fff;">${winner.pais}</span> lidera en Índice Global (${winner.potential_score}/100) con estrategia <em>${winner.estrategia_netflix}</em>.
+      </div>
+    `;
+  };
+
+  selA.onchange = renderH2H;
+  selB.onchange = renderH2H;
+  renderH2H();
 }
 
 function renderWorldMapPlotly(ranking, metricKey) {
@@ -1407,6 +1489,9 @@ function updateDebugPanel() {
     }
   }
 
+  // Grafo Visual SVG (1-Hop -> 2-Hop)
+  renderDebugGraphSVG(p.actors || {}, p.suggested_actors || {});
+
   // Log de acciones recientes
   const actionsList = document.getElementById("debug-actions-list");
   actionsList.innerHTML = "";
@@ -1418,28 +1503,71 @@ function updateDebugPanel() {
   });
 }
 
+function renderDebugGraphSVG(directActors, suggestedActors) {
+  const canvas = document.getElementById("debug-graph-canvas");
+  if (!canvas) return;
+
+  const topDirect = Object.entries(directActors).sort((a,b) => b[1] - a[1]).slice(0, 2);
+  const topSugg = Object.entries(suggestedActors).slice(0, 4);
+
+  if (topDirect.length === 0) {
+    canvas.innerHTML = `<span style="color: #666; font-size: 10.5px;">Interactúa con películas o actores para visualizar el grafo...</span>`;
+    return;
+  }
+
+  const w = 320, h = 110;
+  let edgesSvg = "";
+  let nodesSvg = "";
+
+  const directPositions = topDirect.map(([name, score], i) => ({
+    name,
+    x: topDirect.length === 1 ? 105 : (75 + i * 95),
+    y: 55
+  }));
+
+  const suggPositions = topSugg.map(([name, info], i) => {
+    const angle = -0.9 + i * 0.6;
+    return {
+      name,
+      via: info.via_actor,
+      x: 245,
+      y: 20 + i * 24
+    };
+  });
+
+  suggPositions.forEach(s => {
+    const src = directPositions.find(d => d.name === s.via) || directPositions[0];
+    if (src) {
+      edgesSvg += `<line x1="${src.x}" y1="${src.y}" x2="${s.x}" y2="${s.y}" stroke="#555" stroke-width="1.2" stroke-dasharray="3,2" />`;
+    }
+  });
+
+  directPositions.forEach(d => {
+    const shortName = d.name.length > 14 ? d.name.slice(0, 12) + ".." : d.name;
+    nodesSvg += `
+      <circle cx="${d.x}" cy="${d.y}" r="8" fill="#46d369" stroke="#fff" stroke-width="1.2" />
+      <text x="${d.x}" y="${d.y + 19}" fill="#46d369" font-size="9.5" font-weight="bold" text-anchor="middle">${shortName}</text>
+    `;
+  });
+
+  suggPositions.forEach(s => {
+    const shortName = s.name.length > 14 ? s.name.slice(0, 12) + ".." : s.name;
+    nodesSvg += `
+      <circle cx="${s.x}" cy="${s.y}" r="5.5" fill="#ffc107" stroke="#222" stroke-width="1" />
+      <text x="${s.x + 9}" y="${s.y + 3}" fill="#ffd54f" font-size="9" text-anchor="start">${shortName}</text>
+    `;
+  });
+
+  canvas.innerHTML = `<svg width="100%" height="100%" viewBox="0 0 ${w} ${h}">${edgesSvg}${nodesSvg}</svg>`;
+}
+
 // ------------------------------------------------------------------------------
-// 10. BUSCADOR EXCLUSIVO (OCULTA CATEGORÍAS DE INICIO Y MUESTRA SIMILARES)
+// 10. BUSCADOR EXCLUSIVO (POR PELÍCULA, ACTOR, GÉNERO O PAÍS + ACTORES DEL PAÍS)
 // ------------------------------------------------------------------------------
 function initSearch() {
   const searchInput = document.getElementById("search-input");
   const clearBtn = document.getElementById("btn-clear-search");
-  const countrySelect = document.getElementById("nav-country-select");
   let debounceTimeout = null;
-
-  if (countrySelect) {
-    countrySelect.onchange = (e) => {
-      const code = e.target.value;
-      if (!code) {
-        clearSearchAndGoHome();
-      } else {
-        const selectedLabel = countrySelect.options[countrySelect.selectedIndex].text.replace(/^[^\s]+\s/, "");
-        if (searchInput) searchInput.value = selectedLabel;
-        if (clearBtn) clearBtn.style.display = "inline-block";
-        executeSearch(code);
-      }
-    };
-  }
 
   if (!searchInput) return;
 
@@ -1479,6 +1607,9 @@ async function executeSearch(query) {
 
   const titleEl = document.getElementById("search-view-title");
   const subEl = document.getElementById("search-view-subtitle");
+  const actorsBlock = document.getElementById("search-actors-block");
+  const actorsHeading = document.getElementById("search-actors-heading");
+  const actorsPills = document.getElementById("search-actors-pills");
   const directHeading = document.getElementById("search-direct-heading");
   const directGrid = document.getElementById("search-direct-grid");
   const similarBlock = document.getElementById("search-similar-block");
@@ -1490,6 +1621,7 @@ async function executeSearch(query) {
   subEl.textContent = `Buscando películas, series, países, actores y géneros relacionados...`;
   directGrid.innerHTML = `<div style="color:#aaa; padding:20px;">Consultando catálogo maestro desambiguado...</div>`;
   similarGrid.innerHTML = "";
+  if (actorsBlock) actorsBlock.style.display = "none";
 
   try {
     const res = await fetch(`${CONFIG.API_BASE}/api/catalog/search?q=${encodeURIComponent(query)}&session_id=${CONFIG.SESSION_ID}`);
@@ -1500,6 +1632,7 @@ async function executeSearch(query) {
 
     const directItems = data.direct_matches || [];
     const similarItems = data.similar_titles || [];
+    const relatedActors = data.country_actors || [];
 
     if (directItems.length === 0) {
       subEl.textContent = `No se hallaron coincidencias para "${query}". Prueba buscando por país (ej: Argentina, España, Corea), título, actor o género.`;
@@ -1508,10 +1641,30 @@ async function executeSearch(query) {
       return;
     }
 
+    // Renderizar bloque de Actores del País o de la Búsqueda
+    if (actorsBlock && actorsPills && relatedActors.length > 0) {
+      actorsBlock.style.display = "block";
+      actorsHeading.innerHTML = data.is_country_search
+        ? `🎭 Actores y Protagonistas Destacados de <strong>${data.country_name}</strong> <span style="font-size:11px; color:#888; font-weight:normal;">(Clic en un actor para ver sus películas)</span>:`
+        : `🎭 Actores Relacionados con tu Búsqueda <span style="font-size:11px; color:#888; font-weight:normal;">(Clic para explorar su filmografía)</span>:`;
+      actorsPills.innerHTML = "";
+      relatedActors.forEach(actorName => {
+        const btn = document.createElement("button");
+        btn.className = "actor-pill";
+        btn.textContent = actorName;
+        btn.onclick = () => {
+          const searchInput = document.getElementById("search-input");
+          if (searchInput) searchInput.value = actorName;
+          executeSearch(actorName);
+        };
+        actorsPills.appendChild(btn);
+      });
+    }
+
     if (data.is_country_search) {
-      titleEl.textContent = `🌍 Catálogo de ${data.country_name}`;
-      subEl.textContent = `Mostrando las ${directItems.length} películas y series más exitosas originarias de ${data.country_name} (ordenadas por Rating Bayesiano y Horas en Netflix)`;
-      if (directHeading) directHeading.textContent = `Top Producciones de ${data.country_name}`;
+      titleEl.textContent = `🌍 Películas, Series y Talento de ${data.country_name}`;
+      subEl.textContent = `Mostrando las ${directItems.length} producciones más exitosas originarias de ${data.country_name} y su elenco representativo`;
+      if (directHeading) directHeading.textContent = `Top Películas y Series de ${data.country_name}`;
     } else {
       titleEl.textContent = `Resultados para "${query}"`;
       subEl.textContent = `Mostrando ${directItems.length} coincidencias canónicas y recomendaciones de géneros similares (${data.seed_genres || 'Afines'})`;
@@ -1543,10 +1696,8 @@ function clearSearchAndGoHome() {
   STATE.isSearching = false;
   const searchInput = document.getElementById("search-input");
   const clearBtn = document.getElementById("btn-clear-search");
-  const countrySelect = document.getElementById("nav-country-select");
   if (searchInput) searchInput.value = "";
   if (clearBtn) clearBtn.style.display = "none";
-  if (countrySelect) countrySelect.value = "";
 
   const homeCatalogView = document.getElementById("home-catalog-view");
   const searchResultsView = document.getElementById("search-results-view");

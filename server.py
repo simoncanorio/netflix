@@ -282,9 +282,9 @@ def get_initial_catalog():
         {
             "id": "intl_hidden_gems_home",
             "title": "💎 Joyas Escondidas Internacionales (Fuera del Radar de Hollywood)",
-            "subtitle": "Obras maestras de mercados no saturados con altísimo Rating Bayesiano (≥ 7.6) y volumen moderado",
+            "subtitle": "Obras maestras de mercados no saturados con altísimo Rating Bayesiano (≥ 7.5) y bajo costo de licencia",
             "items": fetch_carousel(
-                "domestic_region NOT IN ('US', 'GB', 'UNKNOWN') AND bayesian_rating >= 7.6 AND numVotes BETWEEN 3000 AND 95000",
+                "domestic_region NOT IN ('US', 'GB', 'UNKNOWN') AND bayesian_rating >= 7.5 AND numVotes BETWEEN 2500 AND 95000",
                 "bayesian_rating DESC, num_regiones ASC"
             )
         },
@@ -308,6 +308,15 @@ def get_initial_catalog():
                 "domestic_region IN ('AR', 'ES', 'MX', 'CO', 'CL', 'UY', 'PE') AND numVotes >= 2500",
                 "bayesian_rating DESC, numVotes DESC",
                 allowed_countries={"AR", "ES", "MX", "CO", "CL", "UY", "PE"}
+            )
+        },
+        {
+            "id": "gems_series_cult_home",
+            "title": "💎 Series y Miniseries Internacionales Ocultas de Culto",
+            "subtitle": "Joyas episódicas fuera del circuito anglosajón con altísima fidelidad de audiencia",
+            "items": fetch_carousel(
+                "titleType IN ('tvSeries', 'tvMiniSeries') AND domestic_region NOT IN ('US', 'GB', 'UNKNOWN') AND bayesian_rating >= 7.4 AND numVotes BETWEEN 2000 AND 90000",
+                "bayesian_rating DESC, numVotes DESC"
             )
         },
         {
@@ -525,6 +534,13 @@ def search_catalog(q: str = Query(..., min_length=1), session_id: str = "default
         c_records = enrich_records_with_cast_and_country(df_c.to_dict(orient="records"), deduplicate=True, limit=30)
         c_records = [r for r in c_records if r.get("domestic_region") == country_code][:18]
 
+        # Extraer los actores y directores más representativos de ese país a partir de su filmografía destacada
+        actor_counts = {}
+        for r in c_records:
+            for a in [x.strip() for x in str(r.get("actors_str", "")).split(",") if x.strip() and x.strip() != "nan"]:
+                actor_counts[a] = actor_counts.get(a, 0) + 1
+        top_country_actors = [a for a, _ in sorted(actor_counts.items(), key=lambda x: x[1], reverse=True)[:14]]
+
         similar_records = []
         seed_title_name = country_full
         seed_genres_es = "Selección Nacional & Cross-Border"
@@ -541,6 +557,7 @@ def search_catalog(q: str = Query(..., min_length=1), session_id: str = "default
             "is_country_search": True,
             "country_code": country_code,
             "country_name": country_full,
+            "country_actors": top_country_actors,
             "seed_title": seed_title_name,
             "seed_genres": seed_genres_es,
             "direct_matches": c_records,
@@ -568,6 +585,14 @@ def search_catalog(q: str = Query(..., min_length=1), session_id: str = "default
 
     direct_records = enrich_records_with_cast_and_country(direct_df.to_dict(orient="records"), deduplicate=True, limit=18)
 
+    # Extraer actores principales de los resultados encontrados
+    rel_actors = []
+    for r in direct_records[:6]:
+        for a in [x.strip() for x in str(r.get("actors_str", "")).split(",") if x.strip() and x.strip() != "nan"]:
+            if a not in rel_actors:
+                rel_actors.append(a)
+    rel_actors = rel_actors[:12]
+
     similar_records = []
     seed_title_name = query_str
     seed_genres_es = ""
@@ -586,6 +611,7 @@ def search_catalog(q: str = Query(..., min_length=1), session_id: str = "default
     return {
         "query": query_str,
         "is_country_search": False,
+        "country_actors": rel_actors,
         "seed_title": seed_title_name,
         "seed_genres": seed_genres_es,
         "direct_matches": direct_records,
