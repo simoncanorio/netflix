@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netflix - Global Streaming, Graph AI & Executive Analytics</title>
+  <link rel="stylesheet" href="/static/css/netflix.css">
+  <link rel="icon" href="https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.ico">
+  <!-- Plotly.js para Mapas Mundiales Interactivos y Gráficos Ejecutivos -->
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+</head>
+<body>
+
+  <!-- BARRA SUPERIOR FIJA -->
+  <nav class="navbar">
+    <div class="nav-left">
+      <div class="logo" data-target="home" onclick="clearSearchAndGoHome()">
+        NETFLIX <span class="logo-badge">ANALYTICS</span>
+      </div>
+      <ul class="nav-links">
+        <li><a href="#" class="nav-link active" data-target="home">Inicio</a></li>
+        <li><a href="#" class="nav-link" data-target="gems">💎 Joyas Escondidas</a></li>
+        <li>
+          <a href="#" class="nav-link" data-target="mylist">
+            Mi Lista <span id="mylist-count-badge" class="nav-pill-count">0</span>
+          </a>
+        </li>
+        <li><a href="#" class="nav-link" data-target="business">Países con Mayor Potencial</a></li>
+      </ul>
+    </div>
+    
+    <div class="nav-right">
+      <select id="nav-country-select" class="netflix-select" title="Buscar películas y series por país de origen" style="max-width: 175px;">
+        <option value="">🌍 Filtrar por País...</option>
+        <option value="AR">🇦🇷 AR - Argentina</option>
+        <option value="ES">🇪🇸 ES - España</option>
+        <option value="MX">🇲🇽 MX - México</option>
+        <option value="KR">🇰🇷 KR - Corea del Sur</option>
+        <option value="JP">🇯🇵 JP - Japón</option>
+        <option value="DE">🇩🇪 DE - Alemania</option>
+        <option value="FR">🇫🇷 FR - Francia</option>
+        <option value="IT">🇮🇹 IT - Italia</option>
+        <option value="GB">🇬🇧 GB - Reino Unido</option>
+        <option value="US">🇺🇸 US - Estados Unidos</option>
+        <option value="BR">🇧🇷 BR - Brasil</option>
+        <option value="DK">🇩🇰 DK - Dinamarca</option>
+        <option value="SE">🇸🇪 SE - Suecia</option>
+        <option value="NO">🇳🇴 NO - Noruega</option>
+        <option value="IN">🇮🇳 IN - India</option>
+        <option value="TR">🇹🇷 TR - Turquía</option>
+        <option value="CO">🇨🇴 CO - Colombia</option>
+        <option value="CL">🇨🇱 CL - Chile</option>
+        <option value="RS">🇷🇸 RS - Serbia</option>
+      </select>
+      <div class="search-box">
+        <span class="search-icon">&#128269;</span>
+        <input type="text" id="search-input" class="search-input" placeholder="Título, actor, género o país (ej: Argentina)...">
+        <button id="btn-clear-search" class="btn-clear-search" style="display:none;" title="Limpiar búsqueda">&#10005;</button>
+      </div>
+      <button id="btn-toggle-debug" class="btn-debug" title="Ver Grafo de Actores, Bandit y Perfil (Ctrl+D)">
+        <span>&#9881; Grafo & IA</span>
+        <span class="badge-signal" id="debug-score-val">0.0</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- INDICADOR SUTIL DE ACTUALIZACIÓN EN SEGUNDO PLANO -->
+  <div id="subtle-update-toast" class="subtle-toast">
+    <span class="subtle-dot"></span>
+    <span id="subtle-toast-text">Recomendaciones afinadas sutilmente</span>
+  </div>
+
+  <!-- =========================================================================
+       1. SECCIÓN PRINCIPAL: HOME & STREAMING
+       ========================================================================= -->
+  <main class="section-home">
+    
+    <!-- CONTENEDOR NORMAL DE INICIO (SE OCULTA AL BUSCAR) -->
+    <div id="home-catalog-view">
+      <!-- HERO BANNER DESTACADO -->
+      <section class="hero-banner">
+        <div class="hero-content">
+          <div class="hero-tag">TÍTULO DESTACADO GLOBAL • N° 1 EN STREAMING</div>
+          <h1 class="hero-title">Cargando...</h1>
+          <div class="hero-meta">
+            <span class="match-pill hero-match">98% para vos</span>
+            <span class="bayes-pill hero-bayes">★ 8.6 Bayes</span>
+            <span class="hero-year">2024</span>
+            <span class="hit-pill">★ Hit Global</span>
+            <span class="hero-country">Internacional</span>
+            <span class="hero-genres">Drama, Fantasía</span>
+          </div>
+          <p class="hero-desc">Cargando sinopsis oficial en español...</p>
+          <div class="hero-actions">
+            <button class="btn-play btn-hero-play">&#9658; Ver Tráiler / Reproducir</button>
+            <button class="btn-info btn-hero-info">&#9432; Más información</button>
+          </div>
+        </div>
+        <div class="hero-fade-bottom"></div>
+      </section>
+
+      <!-- CONTENEDOR DE CARRUSELES DINÁMICOS -->
+      <div class="main-content" id="carousels-container">
+        <!-- Carruseles inyectados por app.js -->
+      </div>
+
+      <!-- CENTINELA PARA SCROLL INFINITO -->
+      <div id="infinite-scroll-sentinel" class="infinite-scroll-loader">
+        <div class="spinner-netflix"></div>
+        <span>Descubriendo más categorías personalizadas para vos...</span>
+      </div>
+    </div>
+
+    <!-- VISTA EXCLUSIVA DE BÚSQUEDA (OCULTA LAS CATEGORÍAS DE INICIO) -->
+    <section id="search-results-view" class="search-results-view" style="display: none;">
+      <div class="search-header-bar">
+        <div>
+          <h2 id="search-view-title" class="search-view-title">Resultados de búsqueda</h2>
+          <p id="search-view-subtitle" class="search-view-subtitle">Coincidencias canónicas y recomendaciones por similitud temática y de reparto</p>
+        </div>
+        <button class="btn-back-home" onclick="clearSearchAndGoHome()">&#10005; Volver al Inicio</button>
+      </div>
+
+      <div class="search-block">
+        <h3 class="search-section-heading" id="search-direct-heading">Coincidencias Principales</h3>
+        <div id="search-direct-grid" class="search-movies-grid"></div>
+      </div>
+
+      <div class="search-block" id="search-similar-block" style="margin-top: 42px;">
+        <h3 class="search-section-heading" id="search-similar-heading">Películas y Géneros Similares</h3>
+        <p class="search-section-sub" id="search-similar-sub">Seleccionadas algorítmicamente por afinidad de género, narrativa y grafo de actores</p>
+        <div id="search-similar-grid" class="search-movies-grid"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- =========================================================================
+       2. SECCIÓN: MI LISTA (COLECCIÓN GUARDADA + RECOMENDADOR PROPIO)
+       ========================================================================= -->
+  <section class="section-mylist" id="section-mylist" style="display: none;">
+    <div class="mylist-header">
+      <div>
+        <span class="decision-badge" style="background: rgba(229,9,20,0.2); border: 1px solid #e50914;">COLECCIÓN PERSONAL</span>
+        <h1 class="business-title" style="margin-top: 8px;">Mi Lista de Películas y Series</h1>
+        <p class="business-subtitle">
+          Títulos guardados en tu perfil local. Cada elemento en Mi Lista aporta máxima ponderación (+10.0 pts) al Grafo de Actores y motor TF-IDF.
+        </p>
+      </div>
+      <button class="btn-back-home" onclick="switchSection('home')">&#8592; Seguir Explorando Catálogo</button>
+    </div>
+
+    <div id="mylist-empty-state" class="mylist-empty-box" style="display: none;">
+      <div style="font-size: 42px; margin-bottom: 12px;">&#127916;</div>
+      <h3>Tu lista está vacía por el momento</h3>
+      <p style="color: #888; font-size: 13px; margin: 8px 0 18px 0;">
+        Pasa el mouse sobre cualquier película o serie y presiona el botón <strong>"+"</strong> para guardarla aquí.
+      </p>
+      <button class="btn-play" style="margin: 0 auto;" onclick="switchSection('home')">Explorar Tendencias</button>
+    </div>
+
+    <div id="mylist-content-box">
+      <h3 class="search-section-heading">Títulos Guardados (<span id="mylist-total-label">0</span>)</h3>
+      <div id="mylist-saved-grid" class="search-movies-grid"></div>
+
+      <div id="mylist-recs-block" style="margin-top: 48px;">
+        <h3 class="search-section-heading">Inspirado en los títulos de tu Lista</h3>
+        <p class="search-section-sub">Descubrimientos internacionales afines a tu selección personal</p>
+        <div id="mylist-recs-grid" class="search-movies-grid"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       2B. SECCIÓN DEDICADA: 💎 JOYAS ESCONDIDAS INTERNACIONALES
+       ========================================================================= -->
+  <section class="section-mylist" id="section-gems" style="display: none;">
+    <div class="mylist-header">
+      <div>
+        <span class="decision-badge" style="background: rgba(255,193,7,0.18); border: 1px solid #ffc107; color: #ffd54f;">ESTRATEGIA ESCENARIO B • FIRST-LOOK DEALS</span>
+        <h1 class="business-title" style="margin-top: 8px;">💎 Joyas Escondidas Internacionales</h1>
+        <p class="business-subtitle">
+          Producciones no anglosajonas con altísimo Rating Bayesiano (&ge; 7.4) y bajo volumen comercial. Ideales para adquisición de licencias globales a bajo costo con alta retención de nicho.
+        </p>
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="actor-pill coactor gem-region-btn active" data-region="all" onclick="loadHiddenGemsSection('all', this)">🌍 Todas las Regiones</button>
+        <button class="actor-pill gem-region-btn" data-region="latam_es" onclick="loadHiddenGemsSection('latam_es', this)">🌎 Hispanoamérica & España</button>
+        <button class="actor-pill gem-region-btn" data-region="europe" onclick="loadHiddenGemsSection('europe', this)">🏰 Europa & Nórdicos</button>
+        <button class="actor-pill gem-region-btn" data-region="asia" onclick="loadHiddenGemsSection('asia', this)">🐉 Asia & Pacífico</button>
+        <button class="actor-pill gem-region-btn" data-region="east_mena" onclick="loadHiddenGemsSection('east_mena', this)">🕌 Balcanes, Turquía & Oriente</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 36px;">
+      <h3 class="search-section-heading" id="gems-featured-heading">Selección Destacada de Joyas Ocultas</h3>
+      <p class="search-section-sub">Ordenadas por calificación bayesiana ponderada y potencial de descubrimiento transfronterizo</p>
+      <div id="gems-featured-grid" class="search-movies-grid"></div>
+    </div>
+
+    <div id="gems-carousels-container">
+      <!-- Carruseles temáticos de joyas escondidas -->
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       3. SECCIÓN EJECUTIVA: PAÍSES CON MAYOR POTENCIAL
+       ========================================================================= -->
+  <section class="section-business" id="section-business">
+    <div class="business-top-bar">
+      <div>
+        <span class="decision-badge">DATA SCIENCE & CORPORATE STRATEGY</span>
+        <h1 class="business-title" style="margin-top: 8px;">Decisión de Expansión Internacional: Próximo Hub de Producción</h1>
+        <p class="business-subtitle">
+          Evaluación econométrica sobre <strong>132,887 títulos depurados de IMDb</strong> cruzados con <strong>72,712 millones de horas vistas</strong> en el Netflix Top 10 Oficial.
+        </p>
+      </div>
+      <div class="business-actions-bar">
+        <a href="/api/business/export-csv" class="btn-exec-export" download>
+          &#128229; Exportar Matriz (CSV)
+        </a>
+        <button class="btn-exec-print" onclick="window.print()">
+          &#128424; Reporte Ejecutivo (PDF)
+        </button>
+      </div>
+    </div>
+
+    <!-- CINTA DE KPIS GLOBALES MACRO -->
+    <div class="exec-kpi-ribbon">
+      <div class="exec-kpi-card">
+        <div class="exec-kpi-label">Universo Auditado (Post-Waterfall)</div>
+        <div class="exec-kpi-value">132,887 <span class="exec-kpi-unit">Títulos</span></div>
+        <div class="exec-kpi-sub">100% libres de ruido (&ge;100 votos)</div>
+      </div>
+      <div class="exec-kpi-card">
+        <div class="exec-kpi-label">Consumo Streaming Verificado</div>
+        <div class="exec-kpi-value" style="color: #e50914;">72,712 M <span class="exec-kpi-unit">Horas</span></div>
+        <div class="exec-kpi-sub">Cruce canónico Netflix Top 10</div>
+      </div>
+      <div class="exec-kpi-card">
+        <div class="exec-kpi-label">Benchmark Global de Calidad</div>
+        <div class="exec-kpi-value" style="color: #46d369;">★ 6.51 <span class="exec-kpi-unit">Bayes</span></div>
+        <div class="exec-kpi-sub">Alcance medio: 13.59 regiones</div>
+      </div>
+      <div class="exec-kpi-card">
+        <div class="exec-kpi-label">Efecto Doblaje Multi-Idioma</div>
+        <div class="exec-kpi-value" style="color: #ffc107;">2.45x <span class="exec-kpi-unit">Spillover</span></div>
+        <div class="exec-kpi-sub">Multiplicador de exportación (&ge;4 idiomas)</div>
+      </div>
+    </div>
+
+    <!-- DICTAMEN DE DECISIÓN EJECUTIVA (ESCENARIO A vs B) -->
+    <div class="decision-card-hero">
+      <div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <span class="decision-badge" id="biz-recommended-strategy">TIER 1 GLOBAL HUB</span>
+          <span style="font-size:12px; color:#46d369; font-weight:bold;">&#10004; RECOMENDACIÓN DE CAPITAL PRINCIPAL</span>
+        </div>
+        <h2 class="decision-country" id="biz-recommended-country">KR - Corea del Sur</h2>
+        <p style="color: #ccc; font-size: 14px; line-height: 1.65;" id="biz-justification">Cargando justificación...</p>
+        
+        <div class="decision-metrics-grid">
+          <div class="decision-metric-box">
+            <div class="decision-metric-label">Rating Bayesiano Ponderado</div>
+            <div class="decision-metric-val" id="biz-metric-bayes">6.86 (+0.35 pts)</div>
+          </div>
+          <div class="decision-metric-box">
+            <div class="decision-metric-label">Alcance de Exportación Promedio</div>
+            <div class="decision-metric-val" id="biz-metric-reach">20.7 (+7.1 regiones)</div>
+          </div>
+          <div class="decision-metric-box">
+            <div class="decision-metric-label">Consumo en Streaming Global</div>
+            <div class="decision-metric-val" id="biz-metric-hours">2,894.3 Millones de Horas</div>
+          </div>
+          <div class="decision-metric-box">
+            <div class="decision-metric-label">Multiplicador por Doblaje</div>
+            <div class="decision-metric-val" style="color: #ffc107;">3.4x más mercados</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="background: rgba(0,0,0,0.55); padding: 22px; border-radius: 8px; border-left: 3px solid #ffc107;">
+        <h3 style="font-size: 13.5px; color: #ffc107; text-transform: uppercase; margin-bottom: 10px;">&#9888; Limitaciones de Negocio & Riesgos Operativos:</h3>
+        <ul id="biz-limits-list" style="list-style-type: square; padding-left: 18px; font-size: 12px; color: #bbb; line-height: 1.65;">
+          <!-- Limitaciones inyectadas -->
+        </ul>
+        <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid #333;">
+          <h4 style="font-size: 13px; color: #46d369; margin-bottom: 4px;">💎 Alternativa "Joya Escondida" (Escenario B - Co-Producción):</h4>
+          <p style="font-size: 11.5px; color: #aaa; line-height: 1.45;">
+            <strong>Dinamarca / India / España:</strong> Altísimo retorno en calidad crítica mediante acuerdos <em>First-Look</em> y licencias tempranas a un tercio del CAPEX de un estudio propio.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAPA MUNDIAL INTERACTIVO Y MATRIZ DE CUADRANTES -->
+    <div class="maps-analytics-grid">
+      <div class="map-card-container">
+        <div class="map-card-header">
+          <div>
+            <h3 style="font-size: 17px; font-weight: 700;">🌍 Mapa Mundial Interactivo de Potencial Audiovisual</h3>
+            <p style="font-size: 12px; color: #888;">Haz clic en cualquier país del mapa para inspeccionar su ficha técnica y top de películas</p>
+          </div>
+          <div class="map-controls">
+            <label for="map-metric-select" style="font-size: 12px; color: #bbb;">Métrica:</label>
+            <select id="map-metric-select" class="netflix-select">
+              <option value="potential_score">Índice de Potencial Global (0-100)</option>
+              <option value="rating_bayesiano_medio">Calidad Crítica (Rating Bayesiano)</option>
+              <option value="promedio_regiones">Alcance de Exportación (N° Regiones)</option>
+              <option value="millones_horas_netflix">Consumo Real (Millones Horas Top 10)</option>
+              <option value="multiplicador_doblaje">Multiplicador por Doblaje (Spillover)</option>
+            </select>
+          </div>
+        </div>
+        <div id="world-map-plotly" class="plotly-chart-box"></div>
+      </div>
+
+      <div class="map-card-container">
+        <div class="map-card-header">
+          <div>
+            <h3 style="font-size: 17px; font-weight: 700;">📊 Matriz Estratégica: Exportación (Reach) vs. Calidad (Bayes)</h3>
+            <p style="font-size: 12px; color: #888;">Tamaño de burbuja = Horas vistas en Netflix Top 10 | Clic en burbuja para inspeccionar país</p>
+          </div>
+        </div>
+        <div id="quadrant-scatter-plotly" class="plotly-chart-box"></div>
+      </div>
+    </div>
+
+    <!-- INSPECTOR INTERACTIVO DE PAÍS Y MATRIZ DE DOBLAJE -->
+    <div class="maps-analytics-grid">
+      <!-- FICHA EJECUTIVA DEL PAÍS SELECCIONADO -->
+      <div class="map-card-container" id="country-inspector-card">
+        <div class="map-card-header">
+          <div>
+            <span class="decision-badge" id="insp-strategy-badge" style="font-size:10px;">SELECCIONA UN PAÍS EN EL MAPA O TABLA</span>
+            <h3 id="insp-country-title" style="font-size: 22px; font-weight: 800; margin-top: 6px;">KR - Corea del Sur</h3>
+          </div>
+          <button id="insp-btn-open-carousel" class="btn-play" style="padding: 8px 14px; font-size: 12.5px;">
+            &#127916; Abrir Carrusel en Inicio
+          </button>
+        </div>
+
+        <div class="inspector-bars-box">
+          <div class="insp-bar-row">
+            <div class="insp-bar-labels">
+              <span>Calidad Crítica (Rating Bayesiano vs. 6.51 Global)</span>
+              <strong id="insp-val-bayes" style="color:#46d369;">★ 6.86</strong>
+            </div>
+            <div class="insp-bar-track"><div id="insp-fill-bayes" class="insp-bar-fill" style="width:78%; background:#46d369;"></div></div>
+          </div>
+          <div class="insp-bar-row">
+            <div class="insp-bar-labels">
+              <span>Alcance Internacional (Regiones vs. 13.6 Global)</span>
+              <strong id="insp-val-reach" style="color:#e50914;">20.7 países</strong>
+            </div>
+            <div class="insp-bar-track"><div id="insp-fill-reach" class="insp-bar-fill" style="width:82%; background:#e50914;"></div></div>
+          </div>
+          <div class="insp-bar-row">
+            <div class="insp-bar-labels">
+              <span>Multiplicador por Doblaje (&ge;4 idiomas vs. Subtitulado)</span>
+              <strong id="insp-val-dub" style="color:#ffc107;">3.4x alcance</strong>
+            </div>
+            <div class="insp-bar-track"><div id="insp-fill-dub" class="insp-bar-fill" style="width:85%; background:#ffc107;"></div></div>
+          </div>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <div style="font-size: 12px; color: #aaa; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">
+            Top Producciones Emblemáticas del País (Clic para ver ficha):
+          </div>
+          <div id="insp-mini-movies" class="insp-mini-grid">
+            <!-- Mini tarjetas del país -->
+          </div>
+        </div>
+      </div>
+
+      <!-- GRÁFICO DE IMPACTO DEL DOBLAJE VS SUBTITULADO -->
+      <div class="map-card-container">
+        <div class="map-card-header">
+          <div>
+            <h3 style="font-size: 17px; font-weight: 700;">🗣️ Matriz de Doblaje vs. Subtitulado por Mercado</h3>
+            <p style="font-size: 12px; color: #888;">Expansión del alcance de países cuando un título se localiza a &ge;4 idiomas en title.akas</p>
+          </div>
+        </div>
+        <div id="dubbing-bar-plotly" class="plotly-chart-box" style="height: 360px;"></div>
+      </div>
+    </div>
+
+    <!-- EVOLUCIÓN HISTÓRICA DE ERAS TECNOLÓGICAS Y AUDITORÍA DE CONSIGNA -->
+    <div class="maps-analytics-grid">
+      <div class="map-card-container">
+        <div class="map-card-header">
+          <div>
+            <h3 style="font-size: 17px; font-weight: 700;">📈 Evolución Histórica: ¿Cambio Tecnológico o Calidad de Producto?</h3>
+            <p style="font-size: 12px; color: #888;">Tasa de exportación global (&ge;10 países en title.akas) a través de las 4 eras tecnológicas (1980–2024)</p>
+          </div>
+        </div>
+        <div id="history-eras-plotly" class="plotly-chart-box" style="height: 320px;"></div>
+      </div>
+
+      <div class="map-card-container">
+        <div class="map-card-header">
+          <div>
+            <h3 style="font-size: 17px; font-weight: 700;">⚙️ Ingeniería Big Data & Cumplimiento de las 6 Reglas de Negocio</h3>
+            <p style="font-size: 12px; color: #888;">Métricas de optimización de memoria, prevención de explosión 1:N y control de sesgos</p>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 12.5px; color: #ccc; margin-top: 6px;">
+          <div class="funnel-step" style="margin-bottom:0;">
+            <div><strong>1. Optimización de Memoria & Parquet Snappy</strong><div style="font-size:11px; color:#888;">Downcasting (int16, int32, category) con DuckDB C++</div></div>
+            <span style="color:#46d369; font-weight:bold;">218 MB &rarr; 27.4 MB (-87%)</span>
+          </div>
+          <div class="funnel-step" style="margin-bottom:0;">
+            <div><strong>2. Join 1:1 Sin Multiplicación de Filas</strong><div style="font-size:11px; color:#888;">Pre-agregación de 40M de filas en title.akas a grano tconst</div></div>
+            <span style="color:#46d369; font-weight:bold;">0% Duplicación</span>
+          </div>
+          <div class="funnel-step" style="margin-bottom:0;">
+            <div><strong>3. Limpieza de Anomalías Temporales y Homónimos</strong><div style="font-size:11px; color:#888;">Filtro de series con fechas inconsistentes (ej. BYU Weekly) + Desambiguación Top 10</div></div>
+            <span style="color:#ffc107; font-weight:bold;">2,805 Depurados</span>
+          </div>
+          <div class="funnel-step" style="margin-bottom:0;">
+            <div><strong>4. Datos Faltantes Identificados (Regla #5)</strong><div style="font-size:11px; color:#888;">CAPEX confidencial por episodio y Churn Rate por país</div></div>
+            <span style="color:#e50914; font-weight:bold;">Proxy: TMDB Budget & Top 10</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FUNNEL DE CASCADA POBLACIONAL -->
+    <div class="waterfall-container">
+      <h3 style="font-size: 18px; margin-bottom: 6px;">Auditoría de Población y Filtros (Waterfall Funnel)</h3>
+      <p style="color: #888; font-size: 12px; margin-bottom: 16px;">Trazabilidad rigurosa de filas retenidas y desambiguación canónica para evitar sesgos muestrales:</p>
+      <div id="waterfall-funnel-container">
+        <!-- Pasos del Funnel inyectados -->
+      </div>
+    </div>
+
+    <!-- TABLA DE RANKING DE POTENCIAL CON BUSCADOR RÁPIDO -->
+    <div class="ranking-table-container">
+      <div style="padding: 16px 20px; background: #161616; border-bottom: 1px solid #2a2a2a; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div>
+          <h3 style="font-size: 16px;">Ranking de Mercados Internacionales por Índice de Potencial (2015-2024)</h3>
+          <span style="font-size: 12px; color: #888;">Haz clic en cualquier fila para cargar el país en el Inspector Ejecutivo o abrir su carrusel</span>
+        </div>
+        <input type="text" id="country-table-filter" class="netflix-select" placeholder="Filtrar país o estrategia..." style="width: 240px;">
+      </div>
+      <table class="ranking-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>País</th>
+            <th>Índice Potencial</th>
+            <th>Títulos</th>
+            <th>Rating Bayesiano</th>
+            <th>Regiones (Reach)</th>
+            <th>Efecto Doblaje</th>
+            <th>Horas Top 10</th>
+            <th>Estrategia Recomendada</th>
+          </tr>
+        </thead>
+        <tbody id="ranking-table-body">
+          <!-- Filas de países inyectadas -->
+        </tbody>
+      </table>
+    </div>
+
+  </section>
+
+  <!-- =========================================================================
+       4. MODAL DE DETALLE (CON TRÁILER YOUTUBE, GRAFO Y HOOK EPISODE EN SERIES)
+       ========================================================================= -->
+  <div class="modal-backdrop" id="modal-backdrop">
+    <div class="modal-box">
+      <button class="modal-close" onclick="closeModal()">&#10005;</button>
+      <div class="modal-hero" id="modal-hero-banner" style="background: linear-gradient(135deg, #222, #000);">
+        <div class="modal-hero-gradient"></div>
+
+        <!-- CONTENEDOR DE VIDEO TRÁILER YOUTUBE EMBEBIDO -->
+        <div id="modal-trailer-container" class="modal-trailer-container" style="display: none;">
+          <iframe id="modal-trailer-iframe" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+          <button class="btn-close-trailer" onclick="stopModalTrailer()">&#10005; Cerrar Tráiler</button>
+        </div>
+
+        <div class="modal-hero-content" id="modal-hero-content">
+          <div id="modal-type-badge" class="modal-type-badge">PELÍCULA</div>
+          <h2 id="modal-title" style="font-size: 32px; font-weight: 800; margin-bottom: 12px;">Título</h2>
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <button class="btn-play" id="modal-btn-play">&#9658; Reproducir / Ver Tráiler</button>
+            <button class="btn-info" id="modal-btn-list">+ Agregar a Mi Lista</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-grid">
+          <div>
+            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 16px; font-size: 13px; flex-wrap: wrap;">
+              <span id="modal-match" style="color: #46d369; font-weight: 800;">96% para vos</span>
+              <span id="modal-bayes" style="background: rgba(70,211,105,0.15); border: 1px solid #46d369; color: #46d369; padding: 1px 7px; border-radius: 3px; font-weight: bold;">★ 8.5 Bayes</span>
+              <span id="modal-year" style="color: #bbb;">2024</span>
+              <span id="modal-runtime" style="border: 1px solid #555; padding: 1px 6px; border-radius: 3px;">120 min</span>
+              <span style="background: #E50914; color: white; padding: 1px 6px; border-radius: 3px; font-weight: bold; font-size: 11px;">HD • ES</span>
+            </div>
+            <p id="modal-overview" style="color: #eaeaea; font-size: 14.5px; line-height: 1.65; margin-bottom: 18px;">
+              Cargando descripción en español...
+            </p>
+
+            <!-- REPARTO INTERACTIVO Y GRAFO DE CO-ACTUACIÓN -->
+            <div id="modal-cast-section" class="modal-cast-box">
+              <div class="cast-label">🎭 Elenco Principal <span style="font-size:11px; color:#888; font-weight:normal;">(Clic en un actor para explorar su filmografía y reforzar tu grafo)</span>:</div>
+              <div id="modal-actors-pills" class="actor-pills-container"></div>
+              <div id="modal-graph-coactors" class="graph-coactors-box" style="display:none;">
+                <div class="cast-label" style="margin-top:10px; color:#ffc107;">🕸️ Actores conectados en el Grafo de Colaboración (2-Hop):</div>
+                <div id="modal-coactors-pills" class="actor-pills-container"></div>
+              </div>
+            </div>
+          </div>
+
+          <div style="border-left: 1px solid #2a2a2a; padding-left: 20px;">
+            <div class="modal-detail-item"><strong>País de Origen:</strong> <span id="modal-country">KR - Corea del Sur</span></div>
+            <div class="modal-detail-item"><strong>Géneros:</strong> <span id="modal-genres">Drama, Suspenso</span></div>
+            <div class="modal-detail-item"><strong>Dirección:</strong> <span id="modal-directors">En catálogo</span></div>
+            <div class="modal-detail-item"><strong>Difusión Global:</strong> <span id="modal-regiones">24 países</span></div>
+            <div class="modal-detail-item"><strong>Impacto Streaming:</strong> <span id="modal-hours">150 M Horas</span></div>
+          </div>
+        </div>
+
+        <!-- SECCIÓN DE TEMPORADAS, HOOK EPISODE Y EPISODIOS (EXCLUSIVA PARA SERIES) -->
+        <div id="modal-series-section" class="modal-series-section" style="display: none;">
+          
+          <!-- BANNER ANALÍTICO DE RETENCIÓN Y HOOK EPISODE -->
+          <div id="modal-hook-banner" class="hook-episode-banner">
+            <div class="hook-metric">
+              <span class="hook-label">🔥 Episodio Gancho (Hook Episode)</span>
+              <strong id="hook-ep-val" style="color: #fff; font-size: 14px;">Episodio 2</strong>
+            </div>
+            <div class="hook-metric">
+              <span class="hook-label">📈 Fidelidad de Temporada</span>
+              <strong id="hook-retention-val" style="color: #46d369; font-size: 14px;">95% Retención</strong>
+            </div>
+            <div class="hook-metric">
+              <span class="hook-label">📊 Dinámica de Audiencia</span>
+              <strong id="hook-trend-val" style="color: #ffc107; font-size: 12.5px;">In Crescendo</strong>
+            </div>
+          </div>
+
+          <div class="series-episodes-header">
+            <div>
+              <h3 style="font-size: 20px; font-weight: 700;">Episodios y Duraciones</h3>
+              <span id="modal-series-subtitle" style="font-size: 12px; color: #999;">Selecciona una temporada para ver cada capítulo en español</span>
+            </div>
+            <select id="modal-season-select" class="netflix-select"></select>
+          </div>
+          <div id="modal-episodes-list" class="episodes-list-container">
+            <!-- Episodios inyectados dinámicamente -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       5. PANEL DE DEPURACIÓN (LEARNING PROFILE, ACTOR GRAPH & BANDIT DEBUGGER)
+       ========================================================================= -->
+  <aside class="debug-panel" id="debug-panel">
+    <div class="debug-header">
+      <div class="debug-title">&#9881; Motor IA, Grafo & Bandit (En Vivo)</div>
+      <button id="btn-close-debug" style="background:none; border:none; color:#888; cursor:pointer;">&#10005;</button>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-size: 11px; color: #aaa;">
+      <span>Señal Acumulada (Umbral Joyas: 15 pts):</span>
+      <span id="debug-gems-status" style="font-weight: bold;">Faltan 15.0 pts</span>
+    </div>
+    <div class="debug-meter-bar">
+      <div class="debug-meter-fill" id="debug-meter-fill"></div>
+    </div>
+
+    <div style="background: #1f1f1f; padding: 6px 10px; border-radius: 4px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+      <span style="font-size: 10.5px; color: #aaa;">🎨 Contextual Bandit (UCB1):</span>
+      <strong id="debug-bandit-arm" style="font-size: 11px; color: #e50914;">Global Hit Artwork</strong>
+    </div>
+
+    <div class="debug-weights-grid">
+      <div>
+        <strong style="color: #ddd; font-size: 10.5px; text-transform: uppercase;">Top Géneros:</strong>
+        <ul class="debug-list" id="debug-genres-list">
+          <li style="color:#666;">Sin interacciones</li>
+        </ul>
+      </div>
+      <div>
+        <strong style="color: #ddd; font-size: 10.5px; text-transform: uppercase;">Top Países:</strong>
+        <ul class="debug-list" id="debug-countries-list">
+          <li style="color:#666;">Sin interacciones</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="debug-weights-grid" style="margin-top: 8px; border-top: 1px solid #2a2a2a; padding-top: 8px;">
+      <div>
+        <strong style="color: #46d369; font-size: 10.5px; text-transform: uppercase;">🎭 Actores Favoritos (1-Hop):</strong>
+        <ul class="debug-list" id="debug-actors-list">
+          <li style="color:#666;">Sin interacciones</li>
+        </ul>
+      </div>
+      <div>
+        <strong style="color: #ffc107; font-size: 10.5px; text-transform: uppercase;">🕸️ Grafo Co-Estrellas (2-Hop):</strong>
+        <ul class="debug-list" id="debug-coactors-list">
+          <li style="color:#666;">Esperando señal...</li>
+        </ul>
+      </div>
+    </div>
+
+    <div style="margin-top: 10px; border-top: 1px solid #2a2a2a; padding-top: 8px;">
+      <strong style="color: #ddd; font-size: 10.5px; text-transform: uppercase;">Log de Eventos (Dwell Time / Clics):</strong>
+      <div id="debug-actions-list" style="margin-top: 6px; max-height: 100px; overflow-y: auto;">
+        <div style="color: #666; font-size: 11px;">Pasa el mouse >= 800ms o haz clic en títulos/actores...</div>
+      </div>
+    </div>
+  </aside>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

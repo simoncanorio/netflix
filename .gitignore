@@ -1,0 +1,14 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Raw IMDb large dumps (>100 MB GitHub file limit)
+data/*.tsv.gz
+data/*.torrent
+
+# Intermediate 115MB aggregation file (already merged into catalogo_internacional_master.parquet)
+output/parquet/akas_aggregated.parquet

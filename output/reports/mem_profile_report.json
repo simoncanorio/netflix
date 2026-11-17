@@ -1,0 +1,26 @@
+{
+    "timestamp": "2026-11-08 21:52:15",
+    "method": "DuckDB C++ Multi-threaded Ingestion + Snappy Parquet",
+    "stages": [
+        {
+            "dataset": "title.basics",
+            "processed_rows": 1130064,
+            "parquet_size_mb": 27.43,
+            "raw_size_mb": 218.85,
+            "elapsed_seconds": 4.89
+        },
+        {
+            "dataset": "title.ratings",
+            "processed_rows": 1727016,
+            "parquet_size_mb": 12.63,
+            "raw_size_mb": 8.32,
+            "elapsed_seconds": 0.79
+        },
+        {
+            "dataset": "netflix_top10_aggregated",
+            "processed_rows": 6002,
+            "parquet_size_mb": 0.25,
+            "elapsed_seconds": 0.27
+        }
+    ]
+}
