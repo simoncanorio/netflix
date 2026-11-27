@@ -1,0 +1,25 @@
+{
+  "n_sessions_evaluated": 180,
+  "k": 10,
+  "pool_titles": 19335,
+  "models": {
+    "Baseline_Popularidad": {
+      "recall_at_k": 0.0,
+      "ndcg_at_k": 0.0,
+      "intra_list_diversity": 69.1,
+      "catalog_coverage_pct": 0.05
+    },
+    "Baseline_Solo_Generos": {
+      "recall_at_k": 11.67,
+      "ndcg_at_k": 0.0576,
+      "intra_list_diversity": 0.2,
+      "catalog_coverage_pct": 4.43
+    },
+    "Hibrido_NLP_Grafo_v5": {
+      "recall_at_k": 52.22,
+      "ndcg_at_k": 0.2608,
+      "intra_list_diversity": 1.1,
+      "catalog_coverage_pct": 7.25
+    }
+  }
+}

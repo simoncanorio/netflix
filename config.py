@@ -4,16 +4,16 @@ Define rutas de datasets en 'data/', credenciales de TMDB sincronizadas con leer
 hiperparámetros, directivas de negocio y configuración del motor de aprendizaje web.
 """
 
+import os
 from pathlib import Path
 
 # ==============================================================================
-# 1. IMPORTAR CREDENCIALES DESDE leer_datasets.py
+# 1. CARGAR VARIABLES DE ENTORNO (.env) Y CREDENCIALES TMDB
 # ==============================================================================
 try:
     from leer_datasets import TMDB_API_KEY, TMDB_READ_ACCESS_TOKEN
 except ImportError:
-    import os
-    TMDB_API_KEY = os.getenv("TMDB_API_KEY", "4fe9ee1862037288934c7308aec0df1e")
+    TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
     TMDB_READ_ACCESS_TOKEN = os.getenv("TMDB_READ_ACCESS_TOKEN", "")
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
@@ -100,6 +100,6 @@ INTERACTION_DECAY = 0.95
 # Umbral acumulado de señal requerido para activar el carrusel de "Joyas Escondidas para vos"
 SIGNAL_THRESHOLD_GEMS = 15.0
 
-# Servidor Web Local
-SERVER_HOST = "127.0.0.1"
-SERVER_PORT = 8000
+# Servidor Web (Configurable por entorno para Docker / Render / Local)
+SERVER_HOST = os.getenv("SERVER_HOST", "127.0.0.1")
+SERVER_PORT = int(os.getenv("PORT", os.getenv("SERVER_PORT", "8000")))

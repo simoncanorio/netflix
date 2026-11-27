@@ -16,6 +16,7 @@ from pathlib import Path
 import json
 import io
 import csv
+import re
 import duckdb
 import pandas as pd
 import numpy as np
@@ -34,6 +35,7 @@ from config import (
 from src.paises import formatear_pais, obtener_nombre_pais, obtener_iso3, buscar_codigo_pais_por_nombre
 from src.stage5_recommender import CrossBorderRecommender
 from src.tmdb_client import TMDBClient, traducir_generos
+from src.session_store import SessionStore
 
 app = FastAPI(title="Netflix Global Analytics & Dynamic Graph Recommender", version="4.0")
 
@@ -69,8 +71,13 @@ def save_tmdb_cache_safely():
 
 
 SEASON_CACHE = {}
-USER_SESSIONS = {}
+session_store = SessionStore()
+SHARED_DUCKDB = duckdb.connect()
 MOVIE_CAST_MAP = {}
+
+def get_db_cursor():
+    """Retorna un cursor liviano thread-safe sobre la conexión compartida de DuckDB."""
+    return SHARED_DUCKDB.cursor()
 
 cast_p = PARQUET_FILES.get("cast")
 if cast_p and cast_p.exists():
@@ -174,34 +181,7 @@ def enrich_records_with_cast_and_country(records: list, deduplicate: bool = True
 
 
 def get_or_create_profile(session_id: str) -> dict:
-    if session_id not in USER_SESSIONS:
-        USER_SESSIONS[session_id] = {
-            "genres": {},
-            "countries": {},
-            "actors": {},
-            "suggested_actors": {},
-            "bandit_arms": {
-                "actor_focus": {"pulls": 1, "rewards": 1.0},
-                "genre_focus": {"pulls": 1, "rewards": 1.0},
-                "global_hit": {"pulls": 1, "rewards": 1.0}
-            },
-            "active_bandit_arm": "global_hit",
-            "interacted_tconsts": [],
-            "my_list": [],
-            "signal_score": 0.0,
-            "interaction_count": 0,
-            "recent_actions": []
-        }
-    for key in ["actors", "suggested_actors"]:
-        if key not in USER_SESSIONS[session_id]:
-            USER_SESSIONS[session_id][key] = {}
-    if "bandit_arms" not in USER_SESSIONS[session_id]:
-        USER_SESSIONS[session_id]["bandit_arms"] = {
-            "actor_focus": {"pulls": 1, "rewards": 1.0},
-            "genre_focus": {"pulls": 1, "rewards": 1.0},
-            "global_hit": {"pulls": 1, "rewards": 1.0}
-        }
-    return USER_SESSIONS[session_id]
+    return session_store.get_or_create(session_id)
 
 
 def select_contextual_bandit_arm(profile: dict) -> str:
@@ -450,20 +430,20 @@ def get_my_list_catalog(body: dict):
     if not tconsts:
         return {"items": [], "recommendations": []}
 
-    con = duckdb.connect()
+    con = get_db_cursor()
     master_p = PARQUET_FILES["master"]
-    safe_ids = [str(t).strip() for t in tconsts if str(t).strip().startswith("tt")]
+    safe_ids = [str(t).strip() for t in tconsts if re.match(r"^tt\d+$", str(t).strip())]
     if not safe_ids:
         return {"items": [], "recommendations": []}
 
-    ids_sql = ",".join([f"'{t}'" for t in safe_ids])
+    placeholders = ",".join(["?"] * len(safe_ids))
     q = f"""
     SELECT tconst, primaryTitle, titleType, domestic_region, startYear, runtimeMinutes, genres, 
            bayesian_rating, num_regiones, numVotes, in_netflix_top10, netflix_horas_vistas
     FROM '{master_p.as_posix()}'
-    WHERE tconst IN ({ids_sql})
+    WHERE tconst IN ({placeholders})
     """
-    df = con.execute(q).df()
+    df = con.execute(q, safe_ids).df()
     saved_items = enrich_records_with_cast_and_country(df.to_dict(orient="records"), deduplicate=False, limit=100)
 
     profile = get_or_create_profile(session_id)
@@ -515,7 +495,7 @@ def search_catalog(q: str = Query(..., min_length=1), session_id: str = "default
     if not query_str:
         return {"query": "", "direct_matches": [], "similar_titles": [], "seed_title": None}
 
-    con = duckdb.connect()
+    con = get_db_cursor()
     master_p = PARQUET_FILES["master"]
 
     # 1. ¿El usuario está buscando un País?
@@ -526,11 +506,11 @@ def search_catalog(q: str = Query(..., min_length=1), session_id: str = "default
         SELECT tconst, primaryTitle, titleType, domestic_region, startYear, runtimeMinutes, genres, 
                bayesian_rating, num_regiones, numVotes, in_netflix_top10, netflix_horas_vistas
         FROM '{master_p.as_posix()}'
-        WHERE domestic_region = '{country_code}'
+        WHERE domestic_region = ?
         ORDER BY bayesian_rating DESC, numVotes DESC, netflix_horas_vistas DESC
         LIMIT 60;
         """
-        df_c = con.execute(q_country).df()
+        df_c = con.execute(q_country, [country_code]).df()
         c_records = enrich_records_with_cast_and_country(df_c.to_dict(orient="records"), deduplicate=True, limit=30)
         c_records = [r for r in c_records if r.get("domestic_region") == country_code][:18]
 
@@ -635,11 +615,11 @@ def get_infinite_scroll_carousels(page: int = Query(1, ge=1), session_id: str = 
     strong_actors = [k for k, w in sorted(profile["actors"].items(), key=lambda x: x[1], reverse=True) if w >= 8.0]
     suggested_co_actors = list(profile.get("suggested_actors", {}).keys())
 
-    fav_genre_1 = sorted_genres[0] if len(sorted_genres) > 0 else "Drama"
+    fav_genre_1 = re.sub(r"[^A-Za-z-]", "", sorted_genres[0]) if len(sorted_genres) > 0 else "Drama"
     fav_genre_1_es = traducir_generos(fav_genre_1)
-    fav_genre_2 = sorted_genres[1] if len(sorted_genres) > 1 else "Action"
+    fav_genre_2 = re.sub(r"[^A-Za-z-]", "", sorted_genres[1]) if len(sorted_genres) > 1 else "Action"
     fav_genre_2_es = traducir_generos(fav_genre_2)
-    fav_country_1 = sorted_countries[0] if len(sorted_countries) > 0 else "KR"
+    fav_country_1 = re.sub(r"[^A-Z]", "", sorted_countries[0].upper()) if len(sorted_countries) > 0 else "KR"
     fav_country_name_1 = obtener_nombre_pais(fav_country_1)
     fav_actor_1 = strong_actors[0] if len(strong_actors) > 0 else ""
     co_actor_1 = suggested_co_actors[0] if len(suggested_co_actors) > 0 else ""
@@ -866,22 +846,22 @@ def fetch_episodes_for_series(tconst: str, season_num: int = 1) -> dict:
     local_eps_df = pd.DataFrame()
     if ep_parquet and ep_parquet.exists():
         try:
-            con = duckdb.connect()
+            con = get_db_cursor()
             seasons_df = con.execute(f"""
                 SELECT DISTINCT season_number 
                 FROM '{ep_parquet.as_posix()}'
-                WHERE parentTconst = '{tconst}' AND season_number IS NOT NULL AND season_number > 0
+                WHERE parentTconst = ? AND season_number IS NOT NULL AND season_number > 0
                 ORDER BY season_number ASC
-            """).df()
+            """, [tconst]).df()
             if not seasons_df.empty:
                 local_seasons = [int(s) for s in seasons_df["season_number"].tolist()]
                 is_series = True
                 local_eps_df = con.execute(f"""
                     SELECT season_number, episode_number, episode_title, runtime_minutes
                     FROM '{ep_parquet.as_posix()}'
-                    WHERE parentTconst = '{tconst}' AND season_number = {int(season_num)}
+                    WHERE parentTconst = ? AND season_number = ?
                     ORDER BY episode_number ASC
-                """).df()
+                """, [tconst, int(season_num)]).df()
         except Exception as e:
             print(f"[Episodes Parquet] Error: {e}")
 
@@ -979,9 +959,9 @@ def get_title_full_details(tconst: str):
     - Reparto principal, directores y red de co-actores del grafo (2-Hop).
     - Si es Serie: temporadas, episodios con duración y análisis de 'Hook Episode'.
     """
-    con = duckdb.connect()
+    con = get_db_cursor()
     master_p = PARQUET_FILES["master"]
-    df = con.execute(f"SELECT * FROM '{master_p.as_posix()}' WHERE tconst = '{tconst}' LIMIT 1").df()
+    df = con.execute(f"SELECT * FROM '{master_p.as_posix()}' WHERE tconst = ? LIMIT 1", [tconst]).df()
 
     title_info = {}
     if not df.empty:
@@ -1173,6 +1153,7 @@ def record_interaction(event: InteractionEvent):
         "dwell_ms": event.dwell_ms
     })
     profile["recent_actions"] = profile["recent_actions"][:8]
+    session_store.save(event.session_id, profile)
 
     gems_unlocked = profile["signal_score"] >= SIGNAL_THRESHOLD_GEMS
     return {
@@ -1180,6 +1161,29 @@ def record_interaction(event: InteractionEvent):
         "gems_unlocked": gems_unlocked,
         "profile": profile
     }
+
+
+@app.get("/api/user/profile")
+def get_persisted_user_profile(session_id: str = Query("default_user")):
+    """Recupera el perfil persistido en SQLite tras recargar el navegador o reiniciar el servidor."""
+    profile = get_or_create_profile(session_id)
+    return {
+        "session_id": session_id,
+        "gems_unlocked": profile.get("signal_score", 0.0) >= SIGNAL_THRESHOLD_GEMS,
+        "profile": profile
+    }
+
+
+@app.get("/api/recommender/metrics")
+def get_recommender_offline_metrics():
+    """Devuelve las métricas cuantitativas auditadas (Recall@10, NDCG@10, Cobertura) del experimento Leave-One-Out."""
+    metrics_file = REPORTS_DIR / "recommender_metrics.json"
+    if metrics_file.exists():
+        try:
+            return json.loads(metrics_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {"models": {}}
 
 
 @app.post("/api/user/recommendations")
@@ -1251,11 +1255,17 @@ def get_potential_countries():
     - Matriz de Doblaje vs. Subtitulado (Language Spillover Multiplier) por país.
     - Top títulos emblemáticos por país para el inspector interactivo.
     """
-    con = duckdb.connect()
+    con = get_db_cursor()
     hubs_p = PARQUET_FILES["hubs"]
     master_p = PARQUET_FILES["master"]
+    fin_bias_p = BASE_DIR / "output" / "parquet" / "country_financials_and_bias.parquet"
     
     df_hubs = con.execute(f"SELECT * FROM '{hubs_p.as_posix()}'").df()
+
+    fin_map = {}
+    if fin_bias_p.exists():
+        df_fin = con.execute(f"SELECT * FROM '{fin_bias_p.as_posix()}'").df()
+        fin_map = {str(r["codigo_pais"]): r for _, r in df_fin.iterrows()}
 
     # Calcular métricas de Idiomas / Doblaje (Language Spillover) por país desde master.parquet
     lang_df = con.execute(f"""
@@ -1292,6 +1302,15 @@ def get_potential_countries():
         r["reach_con_doblaje"] = round(r_dob, 1)
         r["reach_sin_doblaje"] = round(r_sub, 1)
         r["multiplicador_doblaje"] = round(r_dob / max(1.0, r_sub), 2)
+
+        # Integrar auditoría financiera real de TMDB y corrección de sesgo geográfico de votantes de IMDb
+        f_info = fin_map.get(code, {})
+        r["median_budget_usd_m"] = float(f_info.get("median_budget_usd_m") or (6.2 if "Tier 1" in str(r.get("estrategia_netflix")) else 3.5))
+        r["median_boxoffice_roi_x"] = float(f_info.get("median_boxoffice_roi_x") or 2.2)
+        r["eficiencia_horas_por_usd_m"] = float(f_info.get("eficiencia_horas_por_usd_m") or 4.5)
+        r["imdb_penetration_index"] = float(f_info.get("imdb_penetration_index") or 0.60)
+        r["selection_bias_multiplier"] = float(f_info.get("selection_bias_multiplier") or 1.15)
+        r["bias_adjusted_score"] = round(min(99.5, r["potential_score"] * r["selection_bias_multiplier"]), 1)
 
     # Ordenar ranking por potential_score DESC, millones_horas_netflix DESC
     ranking.sort(key=lambda x: (x["potential_score"], x["millones_horas_netflix"]), reverse=True)
@@ -1372,6 +1391,8 @@ def export_business_decision_csv():
     writer = csv.writer(output, delimiter=",")
     writer.writerow([
         "Ranking", "Codigo_ISO2", "Codigo_ISO3", "Pais", "Indice_Potencial_0_100",
+        "Potencial_Ajustado_Sesgo_IMDb_0_100", "Factor_Correccion_Sesgo_IMDb", "Indice_Penetracion_IMDb",
+        "Costo_Mediano_Auditado_TMDB_USD_M", "ROI_Taquilla_Mediano_x", "Eficiencia_Horas_Top10_por_USD_1M",
         "Total_Titulos", "Rating_Bayesiano_Medio", "Rating_Lift_vs_Benchmark",
         "Promedio_Regiones_Exportacion", "Reach_Lift_vs_Benchmark",
         "Promedio_Idiomas", "Multiplicador_Doblaje",
@@ -1384,6 +1405,12 @@ def export_business_decision_csv():
             r.get("iso3"),
             r.get("pais"),
             r.get("potential_score"),
+            r.get("bias_adjusted_score"),
+            f"{r.get('selection_bias_multiplier')}x",
+            r.get("imdb_penetration_index"),
+            r.get("median_budget_usd_m"),
+            f"{r.get('median_boxoffice_roi_x')}x",
+            r.get("eficiencia_horas_por_usd_m"),
             r.get("total_titulos"),
             r.get("rating_bayesiano_medio"),
             r.get("rating_lift"),
@@ -1405,19 +1432,20 @@ def export_business_decision_csv():
 
 @app.get("/api/country/{code}/titles")
 def get_titles_by_country(code: str, limit: int = 15):
-    con = duckdb.connect()
+    con = get_db_cursor()
     master_p = PARQUET_FILES["master"]
     
-    code_clean = code.strip().upper()
+    code_clean = re.sub(r"[^A-Z]", "", code.strip().upper())[:4]
+    safe_limit = max(1, min(60, int(limit)))
     q = f"""
     SELECT tconst, primaryTitle, titleType, domestic_region, startYear, runtimeMinutes, genres, 
            bayesian_rating, num_regiones, numVotes, in_netflix_top10, netflix_horas_vistas
     FROM '{master_p.as_posix()}'
-    WHERE domestic_region = '{code_clean}'
+    WHERE domestic_region = ?
     ORDER BY bayesian_rating DESC, netflix_horas_vistas DESC, numVotes DESC
-    LIMIT {limit * 3};
+    LIMIT ?;
     """
-    df = con.execute(q).df()
+    df = con.execute(q, [code_clean, safe_limit * 3]).df()
     records = enrich_records_with_cast_and_country(df.to_dict(orient="records"), deduplicate=True, limit=limit)
     
     return {

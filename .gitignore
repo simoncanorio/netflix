@@ -5,6 +5,13 @@ __pycache__/
 .venv/
 venv/
 env/
+.pytest_cache/
+
+# Environment variables & local SQLite session store
+.env
+data/*.db
+data/*.db-wal
+data/*.db-shm
 
 # Raw IMDb large dumps (>100 MB GitHub file limit)
 data/*.tsv.gz

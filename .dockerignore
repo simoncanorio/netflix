@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.git/
+.env
+.venv/
+venv/
+.pytest_cache/
+data/*.tsv.gz
+data/*.torrent
+data/*.db*
+output/parquet/akas_aggregated.parquet

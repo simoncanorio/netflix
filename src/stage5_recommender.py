@@ -6,18 +6,33 @@ y recomendador adaptativo que aprende en tiempo real del perfil del usuario.
 """
 
 from pathlib import Path
+import json
 import duckdb
 import pandas as pd
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
 from sklearn.metrics.pairwise import cosine_similarity
 
 import sys
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from config import PARQUET_FILES, REPORTS_DIR, SIGNAL_THRESHOLD_GEMS
+from config import DATA_DIR, PARQUET_FILES, REPORTS_DIR, SIGNAL_THRESHOLD_GEMS
 from src.paises import formatear_pais, obtener_nombre_pais
 from src.actor_graph import ActorAffinityGraph
 from src.tmdb_client import traducir_generos
+
+SPANISH_STOP_WORDS = {
+    "de", "la", "que", "el", "en", "y", "a", "los", "del", "se", "las", "por", "un", "para",
+    "con", "no", "una", "su", "al", "lo", "como", "más", "mas", "pero", "sus", "le", "ya",
+    "o", "este", "sí", "si", "porque", "esta", "entre", "cuando", "muy", "sin", "sobre",
+    "también", "tambien", "me", "hasta", "hay", "donde", "quien", "desde", "todo", "nos",
+    "durante", "todos", "uno", "les", "ni", "contra", "otros", "ese", "eso", "ante", "ellos",
+    "e", "esto", "mí", "antes", "algunos", "qué", "unos", "yo", "otro", "otras", "otra",
+    "él", "tanto", "esa", "estos", "mucho", "quienes", "nada", "muchos", "cual", "poco",
+    "ella", "estar", "estas", "algunas", "algo", "nosotros", "mi", "mis", "tú", "te", "ti",
+    "tu", "tus", "ellas", "nosotras", "vosostros", "vosostras", "os", "mío", "mía", "míos",
+    "es", "son", "fue", "era", "han", "ha", "ser", "tiene", "tras", "vida", "años", "historia"
+}
+BILINGUAL_STOP_WORDS = list(set(ENGLISH_STOP_WORDS).union(SPANISH_STOP_WORDS))
 
 class CrossBorderRecommender:
     def __init__(self, master_parquet_path: Path | None = None, min_votes: int = 500):
@@ -79,20 +94,47 @@ class CrossBorderRecommender:
               AND domestic_region NOT IN ('UNKNOWN', 'XWW', 'XWG')
             """
         self.df = con.execute(query).df().reset_index(drop=True)
+        self.tconst_to_idx = dict(zip(self.df["tconst"], self.df.index))
         print(f"  -> {len(self.df):,} títulos indexados para recomendaciones cross-border.")
-        
-        # Sopa de metadatos para el espacio latente (incorporando actores y directores para el sistema de grafos)
+
+        # Incorporar sinopsis reales en español/inglés desde tmdb_titles_cache.json (NLP Semántico de Tramas)
+        tmdb_cache_path = DATA_DIR / "tmdb_titles_cache.json"
+        synopsis_map = {}
+        if tmdb_cache_path.exists():
+            try:
+                raw_cache = json.loads(tmdb_cache_path.read_text(encoding="utf-8"))
+                for tc, info in raw_cache.items():
+                    ov = info.get("overview_es") or info.get("overview") or ""
+                    if ov:
+                        synopsis_map[tc] = str(ov)
+            except Exception:
+                pass
+
+        self.df["synopsis_text"] = self.df["tconst"].map(synopsis_map).fillna("")
         actors_tokens = self.df["actors_str"].str.replace(", ", " ").str.replace(" ", "_")
+        directors_tokens = self.df["directors_str"].str.replace(", ", " ").str.replace(" ", "_")
+        decade_tokens = "dec_" + ((self.df["startYear"].fillna(2010).astype(int) // 10) * 10).astype(str)
+
+        # Sopa semántica enriquecida: Géneros (x2) + Formato + País + Década + Elenco/Dirección + Sinopsis NLP
         self.df["metadata_soup"] = (
             (self.df["genres"].fillna("").str.replace(",", " ") + " ") * 2 +
             self.df["titleType"].astype(str) + " " +
             "orig_" + self.df["domestic_region"].astype(str) + " " +
-            actors_tokens.fillna("")
+            decade_tokens + " " +
+            actors_tokens.fillna("") + " " +
+            directors_tokens.fillna("") + " " +
+            self.df["synopsis_text"]
         )
         
-        self.vectorizer = TfidfVectorizer(stop_words="english", token_pattern=r"(?u)\b\w+\b")
+        self.vectorizer = TfidfVectorizer(
+            stop_words=BILINGUAL_STOP_WORDS,
+            ngram_range=(1, 2),
+            sublinear_tf=True,
+            max_features=35000,
+            token_pattern=r"(?u)\b\w\w+\b"
+        )
         self.tfidf_matrix = self.vectorizer.fit_transform(self.df["metadata_soup"])
-        print("  -> Matriz TF-IDF y Grafo de Actores construidos exitosamente.")
+        print(f"  -> Matriz Semántica NLP (Unigramas+Bigramas, {len(synopsis_map)} sinopsis) y Grafo de Actores listos.")
 
     def recommend(self, query_title: str, top_k: int = 5, force_cross_border: bool = True) -> pd.DataFrame:
         """

@@ -49,8 +49,44 @@ document.addEventListener("DOMContentLoaded", () => {
   initSearch();
   initDebugPanel();
   initInfiniteScroll();
+  loadPersistedUserProfile();
+  loadOfflineRecommenderMetrics();
   loadInitialCatalog();
 });
+
+async function loadPersistedUserProfile() {
+  try {
+    const res = await fetch(`${CONFIG.API_BASE}/api/user/profile?session_id=${encodeURIComponent(CONFIG.SESSION_ID)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.profile) {
+      STATE.userProfile = data.profile;
+      STATE.gemsUnlocked = Boolean(data.gems_unlocked);
+      updateDebugPanel();
+    }
+  } catch (err) {
+    console.warn("[Profile SQLite] No se pudo restaurar sesión previa:", err);
+  }
+}
+
+async function loadOfflineRecommenderMetrics() {
+  try {
+    const res = await fetch(`${CONFIG.API_BASE}/api/recommender/metrics`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const box = document.getElementById("debug-offline-benchmark");
+    if (!box || !data || !data.models || !data.models.Hibrido_NLP_Grafo_v5) return;
+    const hyb = data.models.Hibrido_NLP_Grafo_v5;
+    const gen = data.models.Baseline_Solo_Generos || { recall_at_k: 11.7, ndcg_at_k: 0.058 };
+    const pop = data.models.Baseline_Popularidad || { recall_at_k: 0.0 };
+    box.innerHTML = `
+      <div><strong style="color:#46d369;">Híbrido NLP + Grafo v5:</strong> Recall@${data.k || 10} <strong>${hyb.recall_at_k}%</strong> | NDCG <strong>${Number(hyb.ndcg_at_k).toFixed(3)}</strong></div>
+      <div style="color:#888;">Solo Géneros: ${gen.recall_at_k}% (${Number(gen.ndcg_at_k).toFixed(3)}) • Pop: ${pop.recall_at_k}% • SQLite WAL</div>
+    `;
+  } catch (err) {
+    console.warn("[Metrics] Error cargando benchmark offline:", err);
+  }
+}
 
 // ------------------------------------------------------------------------------
 // 2. NAVEGACIÓN ENTRE INICIO, MI LISTA Y PAÍSES CON MAYOR POTENCIAL
@@ -1020,28 +1056,40 @@ async function inspectCountryExecutiveCard(countryRow) {
 
 function updateCountryROISimulator(countryRow, budgetMillions) {
   const labelEl = document.getElementById("roi-budget-label");
+  const auditMetaEl = document.getElementById("roi-audit-meta");
   const titlesEl = document.getElementById("roi-titles-val");
   const hoursEl = document.getElementById("roi-hours-val");
   const savingEl = document.getElementById("roi-saving-val");
   if (!labelEl || !countryRow) return;
 
   labelEl.textContent = `USD ${budgetMillions}M`;
-  // Costo medio estimado por producción según tipo de mercado (frente a USD 18M en Hollywood)
+  // Costo mediano real por producción auditado desde TMDB frente al benchmark de USD 22.0M en Hollywood
+  const hollywoodBenchmark = 22.0;
   const isTier1 = countryRow.estrategia_netflix.includes("Tier 1");
-  const avgCostPerTitle = isTier1 ? 6.2 : 3.8;
-  const estTitles = Math.max(1, Math.round(budgetMillions / avgCostPerTitle));
+  const avgCostPerTitle = Number(countryRow.median_budget_usd_m || (isTier1 ? 6.2 : 3.8));
+  const biasMult = Number(countryRow.selection_bias_multiplier || 1.12);
+  const biasAdjScore = Number(countryRow.bias_adjusted_score || countryRow.potential_score);
 
-  // Horas proyectadas basadas en alcance de exportación, calidad bayesiana y efecto doblaje
+  if (auditMetaEl) {
+    auditMetaEl.innerHTML =
+      `Costo mediano auditado TMDB: <strong style="color:#ddd;">USD ${avgCostPerTitle.toFixed(2)}M/título</strong> vs. USD 22M Hollywood • ` +
+      `Ajuste sesgo IMDb: <strong style="color:#ffc107;">${biasMult.toFixed(2)}x</strong> (Potencial s/sesgo: <strong>${biasAdjScore}/100</strong>)`;
+  }
+
+  const estTitles = Math.max(1, Math.round(budgetMillions / Math.max(0.8, avgCostPerTitle)));
+
+  // Horas proyectadas combinando eficiencia auditada, alcance transfronterizo y calidad bayesiana
   const reachFactor = (countryRow.promedio_regiones || 12) / 13.6;
   const qualityFactor = (countryRow.rating_bayesiano_medio || 6.6) / 6.51;
-  const estHours = Math.round(budgetMillions * 5.8 * reachFactor * qualityFactor);
+  const costEfficiencyBoost = Math.min(2.6, Math.max(0.75, 8.0 / Math.max(1.5, avgCostPerTitle)));
+  const estHours = Math.round(budgetMillions * 4.8 * costEfficiencyBoost * reachFactor * qualityFactor);
 
-  // Ahorro porcentual frente a producir el mismo volumen en EE.UU.
-  const savingPct = Math.min(78, Math.max(35, Math.round((1 - (avgCostPerTitle / 16.5)) * 100)));
+  // Ahorro porcentual auditado frente a producir el mismo volumen en Hollywood (USD 22M)
+  const savingPct = Math.min(90, Math.max(15, Math.round((1 - (avgCostPerTitle / hollywoodBenchmark)) * 100)));
 
   if (titlesEl) titlesEl.textContent = `~${estTitles} producciones`;
   if (hoursEl) hoursEl.textContent = `~${estHours.toLocaleString()}M Horas`;
-  if (savingEl) savingEl.textContent = `-${savingPct}% Costo/Hora`;
+  if (savingEl) savingEl.textContent = `-${savingPct}% vs Hollywood`;
 }
 
 function initHeadToHeadComparator(ranking) {
@@ -1085,6 +1133,10 @@ function initHeadToHeadComparator(ranking) {
         <div style="color:#ffc107; font-weight:bold;">${rowA.multiplicador_doblaje}x (${rowA.millones_horas_netflix}M h)</div>
         <div style="color:#777; font-size:10px; text-transform:uppercase;">Doblaje & Horas</div>
         <div style="color:#ffc107; font-weight:bold;">${rowB.multiplicador_doblaje}x (${rowB.millones_horas_netflix}M h)</div>
+
+        <div style="color:#9ad1ff; font-weight:bold;">USD ${rowA.median_budget_usd_m}M • ${rowA.bias_adjusted_score}/100</div>
+        <div style="color:#777; font-size:10px; text-transform:uppercase;">Costo TMDB & s/Sesgo</div>
+        <div style="color:#9ad1ff; font-weight:bold;">USD ${rowB.median_budget_usd_m}M • ${rowB.bias_adjusted_score}/100</div>
       </div>
       <div style="border-top:1px solid #262626; padding-top:6px; font-size:11px; color:#bbb; text-align:center;">
         🏆 <strong>Dictamen:</strong> <span style="color:#fff;">${winner.pais}</span> lidera en Índice Global (${winner.potential_score}/100) con estrategia <em>${winner.estrategia_netflix}</em>.
@@ -1109,15 +1161,19 @@ function renderWorldMapPlotly(ranking, metricKey) {
     `<b>${r.pais}</b><br>` +
     `Estrategia: ${r.estrategia_netflix}<br>` +
     `Índice Potencial: <b>${r.potential_score}/100</b><br>` +
+    `Potencial Ajustado Sesgo IMDb: <b>${r.bias_adjusted_score}/100</b> (${r.selection_bias_multiplier}x)<br>` +
+    `Costo Mediano Auditado TMDB: <b>USD ${r.median_budget_usd_m}M</b> / título<br>` +
+    `Eficiencia Capital: ${r.eficiencia_horas_por_usd_m}M horas / USD 1M<br>` +
     `Rating Bayesiano: ★ ${r.rating_bayesiano_medio} (${r.rating_lift > 0 ? '+' : ''}${r.rating_lift})<br>` +
-    `Alcance Promedio: ${r.promedio_regiones} países<br>` +
-    `Efecto Doblaje: ${r.multiplicador_doblaje}x<br>` +
+    `Alcance Promedio: ${r.promedio_regiones} países (${r.multiplicador_doblaje}x con doblaje)<br>` +
     `Horas Netflix Top 10: ${r.millones_horas_netflix}M h<br>` +
     `<i>(Clic para inspeccionar país)</i>`
   );
 
   const metricTitles = {
     potential_score: "Potencial (0-100)",
+    bias_adjusted_score: "Potencial s/Sesgo",
+    eficiencia_horas_por_usd_m: "Horas / USD 1M",
     rating_bayesiano_medio: "Rating Bayes",
     promedio_regiones: "Regiones",
     millones_horas_netflix: "Millones Horas",

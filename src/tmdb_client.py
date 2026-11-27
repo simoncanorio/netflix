@@ -59,7 +59,7 @@ class TMDBClient:
         self.api_key = api_key
         self.access_token = access_token
         self.base_url = TMDB_BASE_URL
-        self.is_configured = self.api_key != "TU_API_KEY_DE_TMDB_AQUI"
+        self.is_configured = bool(self.api_key and self.api_key != "TU_API_KEY_DE_TMDB_AQUI")
         
     def _get_headers(self) -> dict:
         if self.access_token and self.access_token != "TU_BEARER_TOKEN_AQUI":

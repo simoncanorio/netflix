@@ -8,13 +8,21 @@ from pathlib import Path
 import pandas as pd
 
 # ==============================================================================
-# 1. CONFIGURACIÓN DE TMDB API KEY (Credenciales configuradas por el usuario)
+# 1. CONFIGURACIÓN DE TMDB API KEY (Cargada de forma segura desde .env)
 # ==============================================================================
-TMDB_API_KEY = os.getenv("TMDB_API_KEY", "4fe9ee1862037288934c7308aec0df1e")
-TMDB_READ_ACCESS_TOKEN = os.getenv(
-    "TMDB_READ_ACCESS_TOKEN",
-    "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI0ZmU5ZWUxODYyMDM3Mjg4OTM0YzczMDhhZWMwZGYxZSIsIm5iZiI6MTc5MzM2MDk5My40Mywic3ViIjoiNmFlNDg0NjEzNDM1NjVhN2MxY2Q3YmUyIiwic2NvcGVzIjpbImFwaV9yZWFkIl0sInZlcnNpb24iOjF9.sSV30kZ_za1VDFBjonP2lkP2gvL5ydPweBjj_yrKlGk"
-)
+def _load_local_env():
+    env_file = Path(__file__).resolve().parent / ".env"
+    if env_file.exists():
+        for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+_load_local_env()
+
+TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
+TMDB_READ_ACCESS_TOKEN = os.getenv("TMDB_READ_ACCESS_TOKEN", "")
 
 # ==============================================================================
 # 2. DEFINICIÓN DE RUTAS Y DATASETS EN LA CARPETA 'data/'
