@@ -23638,7 +23638,17 @@
     "title": "Manifest",
     "overview_es": "Cuando el vuelo 828 de Montego Air aterriza de manera segura después de un vuelo turbulento pero de rutina, la tripulación y los pasajeros se sienten aliviados. Sin embargo, aunque para ellos han pasado pocas horas, el mundo ha envejecido cinco años y sus amigos, familias y colegas, después de llorar su pérdida, han perdido la esperanza y están intentando seguir adelante. Ahora, frente a lo imposible, a todos se les da una segunda oportunidad. Pero, a medida que se aclaran sus nuevas realidades, se enfrentan a un misterio más profundo y algunos de los pasajeros pronto se dan cuenta de que pueden estar destinados a algo más grande de lo que alguna vez creyeron posible.",
     "media_type": "tv",
-    "tmdb_id": 79696
+    "tmdb_id": 79696,
+    "tconst": "tt8421350",
+    "overview": "Cuando el vuelo 828 de Montego Air aterriza de manera segura después de un vuelo turbulento pero de rutina, la tripulación y los pasajeros se sienten aliviados. Sin embargo, aunque para ellos han pasado pocas horas, el mundo ha envejecido cinco años y sus amigos, familias y colegas, después de llorar su pérdida, han perdido la esperanza y están intentando seguir adelante. Ahora, frente a lo imposible, a todos se les da una segunda oportunidad. Pero, a medida que se aclaran sus nuevas realidades, se enfrentan a un misterio más profundo y algunos de los pasajeros pronto se dan cuenta de que pueden estar destinados a algo más grande de lo que alguna vez creyeron posible.",
+    "trailer_key": "BgUd7SSScTw",
+    "alt_posters": [
+      "/eTemCphrglLKrXOsNRhYezHA7H9.jpg",
+      "/1xeiUxShzNn8TNdMqy3Hvo9o2R.jpg",
+      "/nSY1JXE5ObgCZMbp7v6U1dVCbHp.jpg",
+      "/87yAjiGrzR0tmZew4VzzsvXk3eN.jpg"
+    ],
+    "country": "US"
   },
   "tt33175825": {
     "poster_path": "/2vKweKp6Nynd4kBiKhOGyP0iSdO.jpg",
@@ -24111,5 +24121,101 @@
     "overview_es": "El juez de Nueva Orleans, Michael Desiato, se ve obligado a enfrentar sus propias convicciones más profundas cuando su hijo se ve involucrado en un golpe y fuga que involucra a una familia del crimen organizado.",
     "media_type": "tv",
     "tmdb_id": 86430
+  },
+  "tt5028002": {
+    "poster_path": "/mXiB1e0x3iaRaaPPVhC1c7rgwPr.jpg",
+    "backdrop_path": "/jiU8ZlDa6CgNVhcODxvHGHTh4wB.jpg",
+    "title": "StartUp",
+    "overview_es": "La serie explora lo que sucede cuando una brillante idea tecnológica cae en las manos del emprendedor equivocado. Ambientada en las calles de Miami, la serie cuenta cómo una compañía financiada con dinero sucio proveniente de grupos criminales, tales como una banda de delincuentes haitianos, para construir un negocio estable, debe mantener sus actividades bajo secreto ante la atenta mirada del agente del FBI que tiene el poder de deshacerlo todo.",
+    "media_type": "tv",
+    "tmdb_id": 66310
+  },
+  "tt0200465": {
+    "poster_path": "/73VhKecNDqFTbpoK09II9L87Bg6.jpg",
+    "backdrop_path": "/ynnarxTMs8jWKV9GK0SpUhGNCgH.jpg",
+    "title": "El gran golpe (El robo del siglo)",
+    "overview_es": "Inglaterra, 1971. Un grupo de ladrones planea y ejecuta un golpe maestro: un espectacular atraco a un banco. Pero, además del dinero y las joyas, forman parte del botín ciertos documentos que permitirían sacar a la luz un escándalo de corrupción que involucra no sólo a altos funcionarios del gobierno británico, sino también a un miembro de la familia real.",
+    "media_type": "movie",
+    "tmdb_id": 8848
+  },
+  "tt11304504": {
+    "poster_path": "/4POHMXUtpZp0NSthj8yDsPz2zWB.jpg",
+    "backdrop_path": "/noCgyITVoRxC3huC9zSOQq23sVr.jpg",
+    "title": "Hasta el final",
+    "overview_es": "Una excampeona de boxeo lleva a cabo la misión de su vida cuando decide buscar a su hermana desaparecida.",
+    "media_type": "movie",
+    "tmdb_id": 821420
+  },
+  "tt6183834": {
+    "poster_path": "/gbFYXClD52Axdvo5h9XRVLDsBY.jpg",
+    "backdrop_path": "/mBmxc4EQi8GlNAgtx7r9SRxOivK.jpg",
+    "title": "Carbone",
+    "overview_es": "Antoine Roca es un hombre ordinario que, a raíz de la amenaza de perder su empresa, prepara una estafa que se convertirá en el fraude del siglo. Atrapado en el bandolerismo, deberá enfrentarse a traiciones, asesinatos y ajustes de cuentas. La intriga se inspira en el asunto real acaecido entre 2008 y 2009, cuando a través de las cuotas de IVA sobre el carbono el Tribunal de Cuentas de Francia acabó destapando \"el fraude del siglo\".",
+    "media_type": "movie",
+    "tmdb_id": 427348
+  },
+  "tt0896798": {
+    "poster_path": "/x9v7gtShbgoxhAWhB1kFxSyBiA.jpg",
+    "backdrop_path": "/z6ueaizIb3vH3l1l4xSr2bET2Am.jpg",
+    "title": "Cleaner",
+    "overview_es": "Tom Cutler es un ex policía que ahora se dedica a limpiar escenas de crímenes una vez que ya han sido investigados. Concienzudo y metódico, no deja jamás rastro alguno que pueda indicar que haya ocurrido una tragedia en ese lugar. Cuando recibe el encargo de limpiar la escena de un brutal asesinato acaecido en un barrio de clase alta, lo encara como un trabajo más… hasta que se da cuenta de que nadie ha comunicado el crimen a la policía y que lo que ha hecho es eliminar toda evidencia del mismo.",
+    "media_type": "movie",
+    "tmdb_id": 13252
+  },
+  "tt1540133": {
+    "poster_path": "/u1nopQr6WOxm2uxE1oTcKZno3nr.jpg",
+    "backdrop_path": "/aCSsQrr6QoSFFNlBElLWzR3Z51c.jpg",
+    "title": "El irlandés",
+    "overview_es": "Gerry Boyle es un excéntrico, grosero y subversivo policía irlandés que debe colaborar con un más que aburrido agente del FBI para detener a un grupo de traficantes de drogas que están amenazando la tranquilidad del condado de Galway.",
+    "media_type": "movie",
+    "tmdb_id": 67913
+  },
+  "tt1032755": {
+    "poster_path": "/fToZMkSQ1xSrhETOfBIdNXQWCyp.jpg",
+    "backdrop_path": "/11V6JMreBokxvTZTsxmSQsibaRb.jpg",
+    "title": "RocknRolla",
+    "overview_es": "Cuando un mafioso ruso crea una estafa inmobiliaria que genera millones de libras, varios miembros del hampa de Londres empiezan a perseguir su parte del botín. Varios personajes sospechosos, entre ellos Mr One-Two, Stella la contable, y Johnny Quid, estrella del rock y drogadicto, tratan de reclamar su tajada.",
+    "media_type": "movie",
+    "tmdb_id": 13809
+  },
+  "tt0102685": {
+    "poster_path": "/rxgvvm3j2jA4Flh2k9Hrvq2T7Vs.jpg",
+    "backdrop_path": "/yGOHbICOQwlJ20UjK8F2ChGJjvl.jpg",
+    "title": "Le llaman Bodhi",
+    "overview_es": "Johnny Utah, un joven agente del FBI, se infiltra en los ambientes del surf para desenmascarar a una banda de atracadores que, como sello de identidad, usan caretas de presidentes de los Estados Unidos durante sus golpes. Pero Johnny pronto se encapricha de la guapa Tyler y, además, conoce a Bodhi, el jefe de la banda, un hombre que vive al límite y que acaba ejerciendo una gran influencia sobre el joven policía.",
+    "media_type": "movie",
+    "tmdb_id": 1089
+  },
+  "tt0461936": {
+    "poster_path": "/1d52h7aDRlc5IPUFno24XPNT6hA.jpg",
+    "backdrop_path": "/edCPKBBiWwiLnvMyDwpDeEHL0Oz.jpg",
+    "title": "Don",
+    "overview_es": "Remake de \"Don\", de Amitabh Bachchan (1978). Don, un temible capo de la mafia india, resulta gravemente herido en una emboscada policial. Cuando se extiende la voz de que ha fallecido en el incidente, se busca a un hombre de paja, un doble exacto del gángster, para que ocupe su lugar.",
+    "media_type": "movie",
+    "tmdb_id": 17501
+  },
+  "tt0118884": {
+    "poster_path": "/rFcs0iDNWD5mAq9a6YrKn5qdsFa.jpg",
+    "backdrop_path": "/aOzTr5FxlS06ppd5a5KaqKwOPgx.jpg",
+    "title": "Contact",
+    "overview_es": "Eleanor Arroway perdió la fe en Dios tras la muerte de sus padres en su niñez. Sin embargo, Ellie ha desarrollado una clase distinta de fe en lo desconocido: trabaja con un grupo de científicos escrutando ondas de radio procedentes del espacio exterior en busca de señales de inteligencias extraterrestres. Su trabajo se verá recompensado cuando detecte una señal desconocida que supuestamente porta las instrucciones de fabricación de una máquina para reunirse con los creadores del mensaje.",
+    "media_type": "movie",
+    "tmdb_id": 686
+  },
+  "tt6292852": {
+    "poster_path": "/qnYBbh8MQLrvSbgp6uKRqy2HxEQ.jpg",
+    "backdrop_path": "/iJjdemZDyHGa2BJgfoyv5m1sCiw.jpg",
+    "title": "I Am Mother",
+    "overview_es": "Una adolescente (Rugaard) es criada es un refugio subterráneo por una madre robot que ha sido diseñada para repoblar la Tierra en caso de que se produjese una catástrofe. El vínculo entre ambas se ve amenazado cuando la joven lleva a su casa a una desconocida ensangrentada (Swank) que pone en tela de juicio todo lo que su madre robótica le ha enseñado sobre el mundo exterior. La adolescente tendrá que averiguar cuál de las dos dice la verdad para poder tomar una decisión con respecto a su futuro.",
+    "media_type": "movie",
+    "tmdb_id": 505948
+  },
+  "tt13757540": {
+    "poster_path": "/urlVKYhzsqDK6Cjlw2F9NMUdoHm.jpg",
+    "backdrop_path": "/6EZjh8GQr19NcZQ5N9DWMbNLvLF.jpg",
+    "title": "Puerta al verano",
+    "overview_es": "Un roboticista pionero despierta en 2025 después de décadas en criosueño. Para cambiar el pasado y reunirse con su hermana adoptiva, busca un camino de regreso a 1995.",
+    "media_type": "movie",
+    "tmdb_id": 722798
   }
 }
