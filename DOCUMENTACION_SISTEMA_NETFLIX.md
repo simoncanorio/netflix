@@ -1,290 +1,150 @@
-# Documentación Integral del Sistema: Netflix Global Streaming & Decision Analytics
+# 🎬 Guía Sencilla y Completa del Proyecto: Netflix Global Analytics
 
-**Asignatura:** Taller 2 - Proyecto Estratégico Netflix  
-**Rol:** Lead Data Scientist & Entertainment Analytics Engineer  
-**Versión del Sistema:** 2.0 (Producción Local)  
+Este documento explica **de principio a fin y en palabras simples** cómo está armado el proyecto, dónde está cada archivo, qué hace cada algoritmo matemático por detrás y cómo funciona la plataforma web interactiva.
 
 ---
 
-## 1. Resumen Ejecutivo y Pregunta de Negocio
+## 1. ¿Cuál es el objetivo del proyecto? (En pocas palabras)
 
-Este sistema responde de manera directa, cuantitativa y fundamentada a la pregunta estratégica de negocio planteada en la entrevista:
-
-> **Pregunta de Negocio:** *¿En qué mercado internacional debe Netflix abrir su próximo centro de producción original exclusivo con potencial de exportación global, o qué mercados subexplotados debe adquirir mediante licencias preferentes a bajo costo?*
-
-El proyecto combina un **pipeline de Big Data** (procesamiento de más de 12 millones de registros de IMDb, normalización dimensional y cruce con el Netflix Top 10 Semanal Oficial) con una **plataforma web interactiva full-stack estilo Netflix**, equipada con un **motor recomendador que aprende en tiempo real del comportamiento del usuario**.
+Netflix tiene dos desafíos gigantescos hoy en día:
+1. **Decisión de Negocio (Inversión):** Hollywood es carísimo y está saturado. Netflix necesita decidir con datos reales **en qué país conviene abrir su próximo estudio propio de producción** (inversión grande y segura) y **en qué países conviene comprar licencias baratas de películas o series muy buenas pero poco conocidas** ("Joyas Escondidas").
+2. **Experiencia del Usuario (Recomendación):** Cuando entrás a la aplicación, el catálogo tiene más de 130.000 títulos. Si solo te muestra lo de Estados Unidos, te aburrís; por eso construimos una **web idéntica a Netflix que aprende en vivo de lo que mirás**, descubre tus géneros, países y actores favoritos, y te recomienda cine internacional sin saltos molestos en la pantalla.
 
 ---
 
-## 2. Arquitectura General del Sistema
+## 2. Mapa Sencillo de Archivos: ¿Qué hace cada uno?
 
-El flujo completo desde los datos crudos hasta la experiencia de usuario se estructura en la siguiente arquitectura modular:
-
-```mermaid
-flowchart TD
-    subgraph DataLayer ["1. Capa de Datos (Carpeta data/)"]
-        A1["IMDb Datasets (.tsv.gz)<br/>title.basics, akas, ratings"]
-        A2["Netflix Top 10 Semanal (.tsv)<br/>global + countries"]
-        A3["TMDB API (v3/v4)<br/>Posters & Metadatos"]
-    end
-
-    subgraph PipelineLayer ["2. Pipeline Analítico Big Data (src/)"]
-        B1["Stage 1: Ingesta C++ & Downcasting<br/>DuckDB -> Parquet Snappy"]
-        B2["Stage 2: Agregación Anti-Explosión 1:1<br/>+ Promedio Bayesiano + Waterfall"]
-        B3["Stage 3: Tendencias Históricas<br/>& Spillover Tecnológico"]
-        B4["Stage 4: Matriz de Decisión Hubs<br/>(Rating Lift vs Reach Lift)"]
-    end
-
-    subgraph EngineLayer ["3. Motores de Inteligencia (src/ & server.py)"]
-        C1["CrossBorderRecommender<br/>TF-IDF + Penalización Doméstica"]
-        C2["User Profile Learning Engine<br/>Dwell Time + Decaimiento Temporal"]
-        C3["Servidor REST FastAPI (server.py)<br/>JSON Endpoints & Async Streaming"]
-    end
-
-    subgraph UILayer ["4. Interfaz de Usuario Netflix SPA (web/)"]
-        D1["Home Netflix con Hero & Carruseles"]
-        D2["Módulo 'Países con Mayor Potencial'<br/>Ranking, Cascada & Dictamen Hub"]
-        D3["Panel de Depuración en Vivo (Ctrl+D)<br/>Pesos de Género, País y Señal"]
-    end
-
-    DataLayer --> PipelineLayer
-    PipelineLayer --> EngineLayer
-    EngineLayer --> UILayer
-```
-
----
-
-## 3. Estructura y Ubicación de Archivos en el Repositorio
-
-El proyecto se organiza en directorios con responsabilidades claramente delimitadas:
+Para no perderse en las carpetas, así se divide todo el trabajo:
 
 ```text
 Netflix/
-├── data/                                # ALMACENAMIENTO DE DATOS CRUDOS
-│   ├── name.basics.tsv.gz               # Talentos y directores de IMDb (312 MB)
-│   ├── title.akas.tsv.gz                # Distribución regional e idiomas de IMDb (520 MB)
-│   ├── title.basics.tsv.gz              # Catálogo base de títulos de IMDb (229 MB)
-│   ├── title.crew.tsv.gz                # Directores y guionistas de IMDb (83 MB)
-│   ├── title.episode.tsv.gz             # Temporadas y episodios de series (55 MB)
-│   ├── title.principals.tsv.gz          # Reparto principal y roles (789 MB)
-│   ├── title.ratings.tsv.gz             # Votos y calificaciones de IMDb (8.7 MB)
-│   ├── netflix_top10_global.tsv         # Horas de reproducción globales semanales
-│   └── netflix_top10_countries.tsv      # Posiciones en Top 10 desglosadas por país
 │
-├── output/                              # ARTEFACTOS PROCESADOS E INFORMES
-│   ├── figures/                         # Gráficos estáticos en alta resolución (PNG 300 DPI)
-│   │   ├── 1_evolucion_spillover_tecnologico.png
-│   │   ├── 2_cuadrante_hubs_y_joyas.png
-│   │   └── 3_top_paises_horas_netflix.png
-│   ├── parquet/                         # Tablas columnares optimizadas
-│   │   ├── title_basics.parquet         # Largometrajes y series tipadas (27.4 MB)
-│   │   ├── title_ratings.parquet        # Calificaciones tipadas (12.6 MB)
-│   │   ├── akas_aggregated.parquet      # 12.9M de títulos agregados sin explosión (115 MB)
-│   │   ├── netflix_top10_aggregated.parquet # Títulos consolidados de streaming (0.1 MB)
-│   │   ├── catalogo_internacional_master.parquet # 132,887 títulos limpios y cruzados (7.6 MB)
-│   │   └── international_hubs_metrics.parquet # Matriz de 63 países analizados (0.01 MB)
-│   ├── reports/                         # Informes ejecutivos en formato Markdown
-│   │   ├── historical_trends_report.md  # Evolución por era tecnológica
-│   │   ├── hubs_decision_matrix.md      # Matriz completa con nombres de países
-│   │   ├── mem_profile_report.json      # Auditoría de memoria y tiempos de ingesta
-│   │   ├── recommender_evaluation.md    # Evaluación matemática del recomendador
-│   │   └── waterfall_population_report.md # Auditoría de población retenida
-│   └── dashboard_netflix.html           # Tablero interactivo Plotly en HTML
+├── run_app.py                  👉 EL BOTÓN DE ENCENDIDO: Ejecutás este archivo y levanta toda la web sola.
+├── server.py                   👉 EL CEREBRO DE LA WEB (Backend): Conecta los datos con la pantalla del navegador.
+├── main.py                     👉 EL PROCESADOR DE DATOS: Corre las 5 etapas de limpieza y análisis desde cero.
+├── recomendar.py               👉 MODO CONSOLA: Permite probar recomendaciones escribiendo en la terminal.
+├── config.py                   👉 PANEL DE CONTROL: Guarda rutas de carpetas, puntajes de clics y parámetros.
+├── leer_datasets.py            👉 CONECTOR INICIAL: Guarda las llaves (API Key) para pedir fotos y textos a TMDB.
 │
-├── src/                                 # CÓDIGO FUENTE DE LOS MÓDULOS DE DATA SCIENCE
-│   ├── __init__.py                      # Inicializador de paquete
-│   ├── paises.py                        # Mapeo ISO-3166-1 alpha-2 a 'AR - Argentina'
-│   ├── stage1_ingestion.py              # Ingesta multihilo en C++ y downcasting de memoria
-│   ├── stage2_eda_cleaning.py           # Agregación anti-explosión, Joins, Bayes y cascada
-│   ├── stage3_history_trends.py         # Modelado histórico de globalización vs. tecnología
-│   ├── stage4_hubs_decision.py          # Matriz de decisión (Hubs vs. Joyas Escondidas)
-│   ├── stage5_recommender.py            # Motor híbrido Cross-Border y aprendizaje de usuario
-│   ├── generar_graficos.py              # Visualizador estático y generador de dashboard
-│   └── tmdb_client.py                   # Conector oficial con The Movie Database (TMDB API)
+├── data/                       📦 DATOS CRUDOS Y CACHÉ DE FOTOS/SINOPSIS
+│   ├── *.tsv.gz                • Los 7 archivos gigantes originales de IMDb (películas, votos, actores, episodios).
+│   ├── netflix_top10_*.tsv     • Datos oficiales de Netflix con cuántas horas reales se vio cada título por semana.
+│   └── tmdb_titles_cache.json  • "Memoria rápida" con 1.849 películas ya traducidas al español, con póster y país real.
 │
-├── web/                                 # FRONTEND SPA (SINGLE PAGE APPLICATION) ESTILO NETFLIX
-│   ├── index.html                       # Estructura del reproductor, carruseles, modal y negocio
-│   ├── css/
-│   │   └── netflix.css                  # Tema oscuro Netflix (#141414), zoom hover y responsive
-│   └── js/
-│       └── app.js                       # Dwell time tracking, envío de eventos y DOM reactivo
+├── output/                     📊 RESULTADOS LISTOS PARA USAR
+│   ├── parquet/                • Las bases de datos ya limpias y ultrarrápidas (pesan casi 90% menos que las originales).
+│   ├── figures/                • Los 3 gráficos principales guardados como imágenes PNG de alta calidad.
+│   └── reports/                • Resúmenes escritos automáticamente con los números de cada etapa.
 │
-├── config.py                            # Hiperparámetros, rutas, credenciales y umbrales
-├── leer_datasets.py                     # API key de TMDB y funciones de lectura rápida
-├── main.py                              # Orquestador del pipeline de datos por consola
-├── server.py                            # Servidor Web Backend FastAPI
-├── run_app.py                           # Lanzador unificado de la aplicación web local
-└── DOCUMENTACION_SISTEMA_NETFLIX.md     # Este documento
+├── src/                        🧠 MÓDULOS DE CIENCIA DE DATOS (Uno por cada tarea)
+│   ├── stage1_ingestion.py     • Etapa 1: Lee los archivos gigantes sin colgar la memoria RAM y los pasa a Parquet.
+│   ├── stage2_eda_cleaning.py  • Etapa 2: Limpia errores, une tablas sin duplicar y calcula el "Promedio Bayesiano".
+│   ├── stage3_history_trends.py• Etapa 3: Analiza cómo creció el cine extranjero del VHS al Streaming (1980-2024).
+│   ├── stage4_hubs_decision.py • Etapa 4: Arma el ranking de países para decidir dónde invertir.
+│   ├── stage5_recommender.py   • Etapa 5: El recomendador que cruza géneros, países y actores.
+│   ├── actor_graph.py          • Red de Actores: Conecta qué actores trabajaron juntos para sugerirte nuevos elencos.
+│   ├── tmdb_client.py          • Buscador de Imágenes: Pide a internet (TMDB) pósters, tráilers y resúmenes en español.
+│   ├── paises.py               • Traductor de Países: Convierte códigos como "AR" en "AR - Argentina".
+│   └── generar_graficos.py     • Dibuja los gráficos estadísticos de respaldo.
+│
+└── web/                        🖥️ LA PÁGINA WEB (Lo que ves en el navegador)
+    ├── index.html              • El esqueleto de la página (barra superior, inicio, Mi Lista, modal y pestaña ejecutiva).
+    ├── css/netflix.css         • El diseño visual oscuro, animaciones al pasar el mouse y barras desplazadoras.
+    └── js/app.js               • La interactividad: detecta dónde dejás el mouse, reproduce tráilers y dibuja los mapas.
 ```
 
 ---
 
-## 4. Funcionamiento Detallado del Pipeline de Datos
+## 3. ¿Cómo se procesan los datos paso a paso? (Las 5 Etapas sin tecnicismos)
 
-### Etapa 1: Ingesta, Profiling y Optimización de Memoria
-* **Problema:** Los datasets crudos de IMDb superan los 4 GB descomprimidos y contienen tipos genéricos `object` que provocan errores de memoria RAM (`OutOfMemoryError`).
-* **Solución Técnica:** Se utiliza el motor multihilo C++ de **DuckDB** para procesar los flujos gzip directamente en el disco.
-* **Downcasting:**
-  * `isAdult`: `Int8` (1 byte).
-  * `startYear`: `Int16` (2 bytes, rango $\pm 32,767$).
-  * `runtimeMinutes`: `Int32` (4 bytes).
-  * `averageRating`: `float32`.
-* **Resultado:** Reducción de 218 MB crudos a **27.4 MB en formato Parquet binario Snappy**, procesando 1.13 millones de largometrajes en solo **5.2 segundos**.
+```mermaid
+flowchart LR
+    A["1. Archivos Gigantes IMDb + Top 10"] --> B["2. Compresión Parquet (DuckDB)"]
+    B --> C["3. Limpieza + Nota Justa (Bayes)"]
+    C --> D["4. Ranking de Países (Inversión)"]
+    C --> E["5. Recomendador + Web en Vivo"]
+```
 
----
+### Etapa 1: Cómo abrir archivos gigantes sin que se tilde la computadora (`stage1_ingestion.py`)
+* **El problema:** Los archivos originales de IMDb tienen más de **40 millones de renglones**. Si los abrís de golpe de forma común (con `pandas`), llenan toda la memoria RAM y el programa se cierra.
+* **Cómo lo resolvimos de forma simple:**
+  1. Usamos **DuckDB**, un motor ultrarrápido que lee los archivos comprimidos directo desde el disco duro sin cargarlos enteros en memoria.
+  2. **Achicamos el tamaño de los números (*Downcasting*):** Por defecto, Python guarda un año como `2024` ocupando un espacio gigante (64 bits). Nosotros le dijimos que use cajitas chiquitas (`Int16` para años, `Int8` para sí/no).
+  3. **Formato Parquet:** Guardamos todo en archivos `.parquet` (en `output/parquet/`). Así, una tabla que pesaba **218 MB** bajó a **27,4 MB (-87%)** y se lee en milisegundos.
 
-### Etapa 2: Agregación Anti-Explosión de Filas y Promedio Bayesiano
-* **El Problema del Join Cartesiano ($1:N$):** `title.akas` contiene más de 40 millones de filas debido a que cada película tiene múltiples entradas por cada idioma y territorio de estreno. Un `merge` directo multiplicaría artificialmente las filas de títulos masivos, distorsionando los cálculos de ratings.
-* **Solución:** Pre-agregación en grano `tconst` antes del join:
-  $$\text{num\_regiones} = \text{COUNT(DISTINCT region)}$$
-  $$\text{num\_idiomas} = \text{COUNT(DISTINCT language)}$$
-  $$\text{regiones\_str} = \text{STRING\_AGG(DISTINCT region, ',')}$$
-* **Promedio Bayesiano (Weighted Rating):** Evita el sesgo de títulos con 5 votos y nota 10.0 frente a clásicos con 500,000 votos y nota 8.2:
-  $$WR = \left(\frac{v}{v + m}\right) \cdot R + \left(\frac{m}{v + m}\right) \cdot C$$
-  * $v$: Votos del título (`numVotes`).
-  * $m$: Umbral de significancia estadística (Percentil 75 de votos, $m = 1,002$).
-  * $R$: Calificación observada (`averageRating`).
-  * $C$: Media global del catálogo ($C = 6.82$).
-* **Atribución Precisa de País de Origen y Enriquecimiento TMDB:**
-  * En datasets brutos de IMDb (`title.akas`), las filas con `types = 'original'` marcan la región como nula (`\N`) y contienen todos los países de estreno en desorden de dispersión.
-  * Para evitar atribuciones erróneas (ej: atribuir un título de EE.UU. a Japón por haber sido exportado allí), el pipeline implementa un motor de resolución con **TMDb API (`/find/{imdb_id}` y `/{type}/{id}`)**, capturando el verdadero país de producción (`production_countries` y `origin_country`), poster oficial (`poster_path`) y backdrop panorámico (`backdrop_path`), respaldado con una caché persistente en `data/tmdb_titles_cache.json`.
-* **Filtros de Población (Waterfall Funnel):**
-  1. Años de estreno entre 1970 y 2024.
-  2. Duración de largometrajes y series estándar (40 a 240 minutos).
-  3. Mínimo de 100 votos para eliminar spam o registros irrelevantes.
-  * **Población final depurada:** **132,887 títulos** (representando el 100% de la oferta audiovisual analizable).
+### Etapa 2: Unir tablas sin errores y calcular una "Nota Justa" (`stage2_eda_cleaning.py`)
+Aquí resolvimos **4 trampas clásicas** de los datos:
+1. **Evitar que se multipliquen las filas:** En el archivo `title.akas`, una misma película aparece 60 veces (una por cada país donde se estrenó). Si unís esa tabla directo con la de películas, esa película se contaría 60 veces. Primero **resumimos** `title.akas` para que quede **1 sola fila por película** diciendo *"se estrenó en 60 países y en 12 idiomas"*.
+2. **Eliminar películas homónimas falsas:** Había películas desconocidas que se llamaban igual que series famosas (por ejemplo, una película independiente de 2009 llamada *"You"* se confundía con la serie famosa *"You"* de Netflix). El sistema ordena por cantidad de votos y le asigna las horas de éxito de Netflix **únicamente a la obra original verdadera** (se limpiaron 2.805 casos repetidos).
+3. **Corregir el verdadero país de origen:** Como las películas famosas se estrenan en todo el mundo, IMDb mezclaba los países de distribución. Cruzamos los títulos con los datos de **idioma original y país productor de TMDB** para garantizar que *El secreto de sus ojos* y *Relatos salvajes* figuren como **`AR - Argentina`**, *Dark* como **`DE - Alemania`** y *The Shawshank Redemption* como **`US - Estados Unidos`**.
+4. **El Promedio Bayesiano (La "Nota Justa"):**
+   * *¿Por qué el promedio común miente?* Imaginate una película casera que votaron solo el director y su mamá y le pusieron un **10**, contra *El Padrino* que votaron 2 millones de personas y tiene **9,2**. Si ordenás por promedio simple, ¡gana la película casera!
+   * *¿Cómo funciona nuestra fórmula?*
+     $$WR = \left(\frac{v}{v + m}\right) \cdot R + \left(\frac{m}{v + m}\right) \cdot C$$
+     En palabras simples: mientras una película tiene **pocos votos ($v$)**, el sistema "desconfía" y acerca su nota al **promedio mundial ($C = 6,82$)**. Recién cuando supera los **$m = 1.002$ votos**, su nota real ($R$) pesa con toda su fuerza. Así eliminamos el spam y el *review bombing*.
+5. **Embudo de Limpieza (*Waterfall*):** De **1.130.064** títulos iniciales, tras quitar cortometrajes, fechas imposibles (como series del año 1900 con capítulos del 2000) y títulos con menos de 100 votos, nos quedamos con **132.887 películas y series 100% confiables**.
 
----
+### Etapa 3: Historia del Cine Internacional: ¿Tecnología o Calidad? (`stage3_history_trends.py`)
+Dividimos la historia en 4 épocas: **Era VHS (1980-1996)**, **Era DVD (1997-2009)**, **Inicio del Streaming (2010-2016)** y **Streaming Global actual (2017-2024)**.
+* **Hallazgo clave:** En la época del VHS, solo el **41%** del cine fuera de EE.UU. lograba viajar a más de 10 países. Hoy, con el streaming global y el doblaje simultáneo, el **63,4% de las producciones no inglesas** cruza fronteras (¡incluso superando en proporción al cine estadounidense!).
 
-### Etapa 3: Análisis Histórico de la Globalización
-Se evalúa la evolución temporal del alcance regional contrastado contra las eras tecnológicas de distribución física y digital:
-* **VHS Era (1980–1996):** El 82.9% de títulos no-anglo lograba difusión internacional, pero con una fuerte concentración en mercados vecinos.
-* **DVD Era (1997–2009):** Apertura al audio multi-lenguaje físico; la tasa de spillover global ($\ge 10$ regiones) alcanzó el 52.5%.
-* **Early Streaming (2010–2016):** Primer despliegue digital de Netflix en EE.UU. y expansión inicial.
-* **Global SVOD (2017–2024):** El derrame transfronterizo del contenido no anglosajón alcanzó un récord de **63.4%** (superando al 48.2% de Hollywood), acumulando **72,712 millones de horas vistas** en el Top 10 oficial de Netflix.
+### Etapa 4: ¿Dónde debe invertir Netflix? (`stage4_hubs_decision.py`)
+Para cada país medimos dos cosas simples frente al promedio mundial:
+* **Calidad (*Rating Lift*):** ¿Sus películas gustan más que el promedio mundial de `6,51`?
+* **Viaje Internacional (*Reach Lift*):** ¿Sus películas llegan a más países que el promedio mundial de `13,6`?
+* **Decisión final basada en datos:**
+  * **Escenario A — Abrir un Estudio Propio (Inversión Fuerte):** **Corea del Sur (`KR`)**. Tiene altísima calidad (`6,86`), viaja a más de `20,7` países en promedio y acumula casi **2.900 millones de horas vistas** en el Top 10 de Netflix. (Con la advertencia de que sus costos locales están subiendo por competencia con Disney+ y Apple).
+  * **Escenario B — Comprar Licencias Baratas (*First-Look Deals* / Joyas Escondidas):** Mercados como **Dinamarca (`DK`), India (`IN`), España (`ES`) y Argentina (`AR`)**, donde hay enorme calidad crítica a una fracción de lo que cuesta filmar en Hollywood.
 
 ---
 
-### Etapa 4: Matriz de Decisión de Hubs y "Joyas Escondidas"
-Se clasifica a cada país productor en cuatro cuadrantes estratégicos de acuerdo a dos métricas explícitas:
-1. **Rating Lift:** Calidad crítica bayesiana respecto a la media global:
-   $$\text{Rating Lift} = \text{Rating Bayesiano Medio del País} - 6.51$$
-2. **Reach Lift:** Capacidad de exportación geográfica en número de países:
-   $$\text{Reach Lift} = \text{Mediana de Regiones del País} - 13.59$$
+## 4. ¿Cómo funciona la Aplicación Web por dentro?
 
-#### Matriz de Decisión Estratégica:
-* **Cuadrante 1: Tier 1 Global Hub (Regla de Negocio: Inversión en Estudio Propio):**
-  * *Países líderes:* **Corea del Sur (KR)** (+0.12 Rating Lift, +7.1 Reach Lift, 2,894 M horas de visualización), **Dinamarca (DK)** (+0.15 Rating Lift, +4.9 Reach Lift), **Finlandia (FI)** (+0.24 Rating Lift), **Hong Kong (HK)** (+0.19 Rating Lift).
-* **Cuadrante 2: Joyas Escondidas (Regla de Negocio: Adquisición de Licencias de Bajo Costo):**
-  * *Países:* **Nepal (NP)** (+0.43 Rating Lift), **Pakistán (PK)** (+0.19 Rating Lift), **Bangladesh (BD)** (+0.17 Rating Lift). Mercados con alta excelencia artística pero baja tracción comercial tradicional.
-* **Cuadrante 3: Retención Doméstica:** Mercados grandes cuyo consumo se agota casi en su totalidad dentro de sus propias fronteras (ej: Indonesia, Egipto, Malasia).
+Cuando abrís `http://127.0.0.1:8000`, todo lo que hacés interactúa en vivo con Python:
 
----
+### A. Cómo aprende de tus gustos sin molestarte
+1. **Detector de Interés Real (Regla de los 0,8 segundos):** Si pasás el mouse rápido por arriba de una carátula por accidente, no pasa nada. Pero si te quedás mirando una tarjeta **más de 0,8 segundos (`800 ms`)**, el sistema entiende que te llamó la atención y suma **+1 punto** a ese género y país.
+2. **Escala de puntos:**
+   * Mirar una tarjeta (`hover >= 0.8s`) = **+1 pto**
+   * Hacer clic en la tarjeta = **+3 ptos**
+   * Abrir el panel de información (`Más info`) = **+5 ptos**
+   * Hacer clic en un actor = **+6 ptos**
+   * Guardar en **`Mi Lista`** = **+10 ptos**
+3. **Memoria fresca (Olvido gradual del 5%):** Cada vez que hacés algo nuevo, tus gustos viejos se multiplican por `0,95`. Así, si arrancaste mirando comedias pero ahora tenés ganas de ver suspenso coreano, el sistema se adapta enseguida a lo que querés ver **hoy**.
+4. **Actualización sutil (Sin saltos en la cara):** Si estás mirando una fila de películas en ese momento, la página **no te cambia toda la fila de golpe frente a tus ojos**. Agrega las nuevas sugerencias suavemente al final del carrusel y recién reordena la fila completa cuando bajás o cerrás una ventana.
+5. **Desbloqueo de "💎 Joyas Escondidas para vos":** Cuando sumás **15 puntos** de interacción, el sistema ya te conoce lo suficiente y habilita un carrusel especial de películas muy buenas pero poco famosas que encajan justo con tu perfil.
 
-## 5. El Motor Recomendador y Aprendizaje de Usuario en Tiempo Real
+### B. El Grafo de Actores (`actor_graph.py`): "Los compañeros de tus actores favoritos"
+Armamos una red gigante con **66.030 actores y 246.350 conexiones**.
+* **¿Cómo funciona?** Si mirás películas de **Ricardo Darín** o **Morgan Freeman** (*1er salto / 1-Hop*), el sistema busca en la red con qué otros grandes actores trabajaron en películas bien puntuadas (*2do salto / 2-Hop*, por ejemplo *Soledad Villamil*, *Leonardo Sbaraglia* o *Clint Eastwood*) y te sugiere sus películas explicándote la conexión.
+* **Podés verlo dibujado en vivo:** Presionando **`Ctrl + D`** (o el botón superior **`⚙ Grafo & IA`**), se abre una ventanita que te dibuja en vivo los circulitos verdes (tus actores directos) unidos con líneas a los circulitos dorados (co-estrellas descubiertas).
 
-El recomendador es un sistema híbrido que opera tanto a nivel de ítem como a nivel de perfil dinámico:
+### C. Pósters Inteligentes (*Contextual Bandit*), Series y Buscador Unificado
+* **Pósters adaptativos (*Bandit*):** El sistema prueba qué tipo de portada te hace hacer más clics (póster clásico de éxito global vs. póster centrado en los actores protagonistas).
+* **Series como en Netflix real:** Si abrís una serie (ej. *Dark*, *Stranger Things*, *Bridgerton*), podés elegir la **Temporada**, ver cada capítulo en español con su **duración en minutos**, reproducir el **Tráiler Oficial de YouTube** ahí mismo y ver cuál es el **🔥 Episodio Gancho (*Hook Episode*)**, es decir, el capítulo exacto donde la serie atrapa a la audiencia.
+* **Buscador todo-en-uno:** Si escribís en la lupa el nombre de una película, un género (*"Acción"*, *"Terror"*), un actor o **un país** (por ejemplo escribís **`Argentina`** o **`argentino`**), desaparecen las filas del inicio y te aparecen **los actores destacados de ese país** arriba (para filtrar con un clic) seguidos de todas las películas de ese país y similares.
 
-### A. Espacio Latente de Contenido (TF-IDF Embeddings)
-Se construye una representación vectorial para cada título a partir de su *sopa de metadatos*:
-$$\text{Metadata Soup} = 2 \times \text{genres} + \text{titleType} + \text{orig\_country}$$
-La matriz de similitud coseno calcula la afinidad temático-estructural entre títulos.
-
-### B. Penalización Doméstica para Descubrimiento Cross-Border
-Para evitar que un usuario que ve una serie española solo reciba series de España, el algoritmo aplica una **penalización del 85% a los títulos producidos en el mismo país de origen**, obligando al modelo a buscar contrapartes de alta calidad en otros continentes.
-
-### C. Aprendizaje Activo y Captura de Interacciones
-El cliente registra los eventos del usuario y los envía al backend mediante `/api/user/interact`:
-
-| Tipo de Interacción | Ponderación | Criterio de Activación |
-| :--- | :---: | :--- |
-| **Hover en Tarjeta** | $+1.0\text{ pt}$ | Solo si el cursor permanece **$\ge 800\text{ ms}$** (ignora rebotes accidentales). |
-| **Clic en Tarjeta** | $+3.0\text{ pts}$ | Clic intencional para explorar el póster. |
-| **Apertura de Modal** | $+5.0\text{ pts}$ | Apertura del panel de información y lectura de sinopsis. |
-| **Agregado a "Mi Lista"** | $+10.0\text{ pts}$ | Máxima señal explícita de intención de consumo. |
-
-### D. Decaimiento Temporal (Time-Decay)
-Cada vez que ingresa una nueva interacción, los pesos acumulados anteriores se multiplican por un factor de decaimiento:
-$$w_{\text{nuevo}} = w_{\text{anterior}} \times 0.95$$
-Esto asegura que los intereses recientes del usuario predominen sobre lo explorado al inicio de la sesión.
-
-### E. Activación del Carrusel "Joyas Escondidas para vos"
-* **Condición de Activación:** El carrusel permanece oculto hasta que el usuario acumula un puntaje de señal de **$\ge 15.0\text{ puntos}$**.
-* **Filtro de Contenido:** Al desbloquearse, el algoritmo selecciona títulos con **Rating Bayesiano $\ge 6.8$**, volumen de votos moderado ($\le 80,000$ votos) y afinidad temática con los géneros y países que el usuario estuvo explorando.
-* **Explicación Transparente:** Cada tarjeta incluye una etiqueta generada por el backend explicando el motivo de la recomendación (ej: *"Porque exploraste Drama de Corea del Sur"* o *"Joya oculta de alta calidad afín a tu interés en Suspenso"*).
-
-### F. Panel de Depuración en Vivo (Debug Panel)
-Accesible mediante el botón superior o presionando **`Ctrl + D`**, despliega una consola transparente flotante que muestra:
-* La barra de progreso de señal hacia el desbloqueo de Joyas Escondidas.
-* Los 5 géneros con mayor peso en tiempo real.
-* Los países con mayor afinidad acumulada.
-* El registro de auditoría de los últimos eventos capturados (con el *dwell time* exacto y los puntos sumados).
+### D. La Pestaña Ejecutiva: "Países con Mayor Potencial"
+Pensada para responder la pregunta de negocio frente a directivos:
+1. **Mapa Mundial Interactivo y Gráfico de Cuadrantes:** Podés cambiar el color del mapa por Potencial, Calidad, Exportación o Efecto Doblaje. Si tocás cualquier país, carga su ficha técnica.
+2. **Matriz de Doblaje vs. Subtitulado:** Muestra con barras reales cómo doblar una obra a 4 o más idiomas multiplica hasta por **3x u 8x** la cantidad de países a los que llega.
+3. **Simulador de Inversión (Slider de USD 10M a 150M):** Movés la barra de plata y te calcula cuántas producciones originales podrías hacer en ese país, cuántas horas de streaming sumarías y cuánto ahorrás comparado con filmar en EE.UU.
+4. **Comparador Mano a Mano (*Head-to-Head*):** Te deja enfrentar dos países (ej. *Corea del Sur vs. Argentina* o *España vs. Dinamarca*) y te da el ganador automático.
+5. **Descarga directa a Excel (CSV) o PDF:** Con un botón arriba a la derecha.
 
 ---
 
-## 6. Módulo "Países con Mayor Potencial" (Decisión de Negocio)
+## 5. Cómo encenderlo y cómo mostrarlo en 2 minutos
 
-Al hacer clic en la pestaña superior **"Países con Mayor Potencial"**, la interfaz transforma la vista hacia un tablero analítico para ejecutivos de Netflix:
-
-1. **Dictamen de Hub Recomendado:**
-   * **Recomendación:** Apertura de Centro de Producción en **Corea del Sur (KR)**.
-   * **Fundamento Numérico:** +0.12 en Rating Lift, +7.1 regiones de alcance promedio y 2,894 millones de horas acumuladas en el Top 10 oficial de streaming.
-   * **Limitaciones y Riesgos Reportados:** Inflación en salarios de actores/directores por competencia con Disney+/Apple, saturación de fórmulas temáticas y bloqueo regulatorio para distribución en China.
-   * **Alternativa de Bajo Costo (Joyas Escondidas):** Acuerdos *First-Look* y compra de licencias en **Dinamarca / Región Nórdica**.
-2. **Auditoría de Cascada (Waterfall Funnel):** Tabla visual con las 5 fases de filtrado, demostrando cuántas filas se descartaron en cada etapa y por qué la muestra es estadísticamente válida.
-3. **Ranking Interactivo de 63 Países:** Tabla con ordenamiento por potencial. **Al hacer clic en cualquier país de la tabla, la plataforma redirige al Home y crea un carrusel exclusivo con los mejores títulos de ese país**.
-
----
-
-## 7. Guía de Ejecución y Comandos
-
-### A. Iniciar la Aplicación Web Completa (Un Solo Comando)
-
-En tu terminal de PowerShell o CMD parada en la carpeta del proyecto:
-
-```bash
+### Para arrancarlo en tu computadora:
+```powershell
 python run_app.py
 ```
+*(Se abre solo en `http://127.0.0.1:8000`)*.
 
-* **¿Qué hace automáticamente?**
-  1. Comprueba la existencia de los datasets procesados en `output/parquet/`.
-  2. Inicia el servidor FastAPI en el puerto local `http://127.0.0.1:8000`.
-  3. Abre tu navegador predeterminado (Chrome, Edge) en la aplicación interactiva.
-
----
-
-### B. Probar el Recomendador Interactivo por Consola (CLI)
-
-Si deseas probar el recomendador directamente desde la línea de comandos:
-
-```bash
-# Probar con un título específico:
-python recomendar.py "Dark"
-python recomendar.py "Parasite"
-python recomendar.py "Money Heist"
-
-# O iniciar el modo interactivo continuo:
-python recomendar.py
-```
-
----
-
-### C. Re-ejecutar el Pipeline de Datos o los Gráficos
-
-Si descargas nuevos datos o modificas algún umbral en `config.py`:
-
-```bash
-# Re-procesar todas las etapas del pipeline de Big Data:
-python main.py --all
-
-# Regenerar los gráficos estáticos de alta resolución y el HTML interactivo de Plotly:
-python src/generar_graficos.py
-```
-
----
-
-### D. Atajos y Funciones Clave en la Web
-* **`Ctrl + D`**: Abre o cierra el **Panel de Depuración en Vivo** para demostrar a los evaluadores cómo el sistema va aprendiendo de los clics y el tiempo de hover.
-* **Hover $\ge 800\text{ ms}$**: Pasa el mouse sobre 2 o 3 películas de un mismo género/país durante 1 segundo para ver cómo el medidor de señal sube y se reordenan los carruseles automáticamente sin recargar la página.
-* **Clic en Tabla de Países**: En la sección de negocio, haz clic sobre cualquier país (ej: Argentina, España, Dinamarca) para cargar de inmediato su carrusel en el Home.
-
+### Recorrido ideal para una presentación o defensa oral:
+1. **Mostrá el Inicio:** Señalá el Hero en español, reproducí el tráiler embebido de *Stranger Things* y bajá haciendo scroll para mostrar cómo el **Scroll Infinito** inventa categorías nuevas.
+2. **Abrí el Panel `⚙ Grafo & IA` (`Ctrl + D`):** Dejalo abierto en una esquina, pasá el mouse 1 segundo sobre 2 películas y guardá una en **`+ Mi Lista`**. Mostrá cómo sube la barra, se dibuja la red de actores y se desbloquean las *Joyas Escondidas*.
+3. **Abrí una Serie (ej. *Dark* o *Bridgerton*):** Mostrá las temporadas, la duración de cada episodio y el indicador de **🔥 Episodio Gancho**.
+4. **Probá el Buscador:** Escribí **`Argentina`** para mostrar cómo detecta los actores argentinos y el cine nacional sin mezclar las categorías del inicio.
+5. **Cerrá en `Países con Mayor Potencial`:** Tocá distintos países en el Mapa Mundial, mové el **Simulador de Inversión en USD** y mostrá la conclusión ejecutiva entre **Corea del Sur (Estudio Propio)** y **Dinamarca/Hispanoamérica (Joyas Escondidas)**.

@@ -2,13 +2,17 @@
 
 **Proyecto Estratégico de Ciencia de Datos y Big Data — Taller 2 (Universidad Austral)**
 
-Plataforma full-stack y pipeline analítico de Big Data que responde a la decisión estratégica de **dónde debe Netflix abrir su próximo centro de producción internacional exclusivo (Escenario A) vs. qué mercados subexplotados adquirir mediante licencias *First-Look* (Escenario B)**, integrando un **motor recomendador adaptativo con Grafo de Colaboración de Actores (1-Hop & 2-Hop)** y **Contextual Artwork Bandits (UCB1)**.
+Plataforma web interactiva estilo Netflix y pipeline de Big Data diseñado para responder con datos reales a dos preguntas clave:
+1. **Negocio:** *¿Dónde debe Netflix abrir su próximo centro de producción propio (Escenario A) y dónde conviene comprar licencias de "Joyas Escondidas" a bajo costo (Escenario B)?*
+2. **Producto & IA:** *¿Cómo recomendar cine y series internacionales aprendiendo en tiempo real de los gustos del usuario mediante texto (TF-IDF) y un Grafo de Colaboración de Actores?*
+
+👉 **[Leer la Guía Completa Explicada de Forma Sencilla (`DOCUMENTACION_SISTEMA_NETFLIX.md`)](DOCUMENTACION_SISTEMA_NETFLIX.md)**
 
 ---
 
-## 🚀 Inicio Rápido (1 Comando)
+## 🚀 Cómo Ejecutarlo (1 Solo Comando)
 
-El repositorio ya incluye los archivos binarios procesados en formato **Parquet Snappy** (`output/parquet/`) y la caché enriquecida en español de **TMDB** (`data/tmdb_titles_cache.json`), por lo que la aplicación corre de forma inmediata tras clonar:
+El repositorio ya incluye las tablas limpias y comprimidas en **Parquet Snappy** (`output/parquet/`) y la caché de **TMDB en español** (`data/tmdb_titles_cache.json`), lista para usar tras clonar:
 
 ```bash
 pip install -r requirements.txt
@@ -19,41 +23,28 @@ Abrí en tu navegador: **`http://127.0.0.1:8000`**
 
 ---
 
-## ✨ Características Principales de la Plataforma Web
+## 🧠 ¿Cómo funciona todo en resumen simple?
 
-1. **Interfaz Tipo Netflix (Dark UI & Español):**
-   * **Hero Banner Cinemático** con sinopsis en español, porcentaje de afinidad (`98% para vos`) y reproducción de **Tráiler Oficial de YouTube embebido**.
-   * **9 Carruseles Iniciales + Scroll Infinito Dinámico** que genera nuevas categorías personalizadas según tus gustos de género, país y elenco.
-   * **Actualización Sutil en Segundo Plano:** El recomendador aprende del tiempo de permanencia en hover ($\ge 800\text{ ms}$), clics, apertura de modales y agregados a *Mi Lista* con decaimiento temporal ($\lambda = 0.95$), actualizando las recomendaciones sin saltos bruscos de pantalla.
-2. **Buscador Exclusivo (Por Película, Serie, Actor, Género o País):**
-   * Al buscar o elegir un país en el selector superior (`🌍 Filtrar por País`), oculta las categorías de inicio y muestra las coincidencias directas más una grilla de **Películas y Géneros Similares**.
-3. **Sección Dedicada `💎 Joyas Escondidas Internacionales`:**
-   * Filtra obras maestras fuera de Hollywood con alto **Promedio Bayesiano** ($\ge 7.4$) y volumen comercial moderado, con filtros por región (*Hispanoamérica & España*, *Europa & Nórdicos*, *Asia & Pacífico*, *Balcanes, Turquía & Oriente*).
-4. **Sección `Mi Lista`:**
-   * Colección personal persistente con su propio motor de recomendaciones derivado de los títulos guardados.
-5. **Series con Temporadas, Episodios, Duraciones y "Hook Episode Analysis":**
-   * Selector de temporadas, lista de capítulos en español con duración exacta en minutos e identificación automática del **🔥 Episodio Gancho (*Hook Episode*)** y **% de Fidelidad de Temporada**.
-6. **Sistema Recomendador con Grafo de Colaboración de Actores (`src/actor_graph.py`):**
-   * Grafo de **66,030 actores y 246,350 conexiones ponderadas** por el Rating Bayesiano de los títulos compartidos. Propaga afinidad de **1-Hop** (actores vistos) a **2-Hop** (co-estrellas sugeridas). Visible en vivo presionando **`Ctrl + D` (`⚙ Grafo & IA`)**.
-7. **Tablero Ejecutivo `Países con Mayor Potencial`:**
-   * **Mapa Mundial Coroplético Interactivo (Plotly)** + **Matriz de Cuadrantes (Reach Lift vs. Rating Lift)** + **Matriz de Doblaje vs. Subtitulado (Language Spillover)** + **Evolución Histórica por Eras Tecnológicas (VHS, DVD, Streaming)**.
-   * **Inspector Ejecutivo de País en Vivo** y exportación directa de la matriz a **Excel CSV** y **Reporte PDF**.
+1. **Compresión e Ingeniería Big Data (`src/stage1` y `stage2`):**
+   * Procesa los datasets crudos de IMDb (+40 millones de filas en `title.akas`) usando **DuckDB**, reduciendo tipos de datos (*downcasting*) y exportando a **Parquet** (-87% de peso en disco, 0% de filas duplicadas).
+   * Calcula una **"Nota Justa" (Promedio Bayesiano)** para evitar que películas con pocos votos engañen al ranking, limpia homónimos y cruza con los **72.712 millones de horas vistas** del *Netflix Top 10 Oficial*.
+2. **Catálogo Tipo Netflix con Aprendizaje Sutil (`web/` + `server.py`):**
+   * **Sinopsis, géneros y episodios en español** + reproductor de **Tráiler Oficial de YouTube** integrado en el modal.
+   * **Aprende en vivo:** Registra cuánto tiempo mirás una tarjeta ($\ge 800\text{ ms}$), tus clics y lo que guardás en **Mi Lista**, actualizando las recomendaciones de forma suave en segundo plano y generando nuevas filas con **Scroll Infinito**.
+   * **Grafo de Actores (1-Hop y 2-Hop):** Conecta a **66.030 actores** según las películas en las que trabajaron juntos para sugerirte elencos afines. Podés ver la red dibujada en vivo presionando **`Ctrl + D`** (`⚙ Grafo & IA`).
+   * **Series Completas:** Incluye selector de temporadas, duración de cada capítulo e identificación automática del **🔥 Episodio Gancho (*Hook Episode*)**.
+   * **Buscador Unificado:** Escribí una película, serie, género, actor o **país** (ej. *"Argentina"*, *"Corea"*, *"España"*) para ver exclusivamente sus actores destacados, sus producciones y títulos similares.
+3. **Tablero Ejecutivo `Países con Mayor Potencial`:**
+   * **Mapa Mundial Interactivo (Plotly)**, **Matriz de Cuadrantes**, **Efecto del Doblaje Multi-Idioma**, **Evolución Histórica (VHS a Streaming)**, **Simulador de Presupuesto (CAPEX / ROI)**, **Comparador Mano a Mano entre 2 países** y descarga a **Excel (CSV) / PDF**.
 
 ---
 
-## 📂 Estructura del Proyecto
+## 📂 Mapa Rápido de Carpetas
 
-* `run_app.py`: Lanzador automático del servidor web en `http://127.0.0.1:8000`.
-* `server.py`: Backend REST API con FastAPI, DuckDB, Grafo de Actores y Contextual Bandit.
-* `main.py`: Orquestador de las 5 etapas del pipeline de Big Data.
-* `src/`:
-  * `stage1_ingestion.py`: Ingesta con DuckDB, downcasting (`int16`, `int32`, `category`) y conversión a Parquet Snappy (-87% tamaño).
-  * `stage2_eda_cleaning.py`: Pre-agregación 1:1 de `title.akas` sin multiplicación de filas, Promedio Bayesiano y auditoría *Waterfall Funnel*.
-  * `stage3_history_trends.py`: Análisis histórico de internacionalización por eras tecnológicas (1980–2024).
-  * `stage4_hubs_decision.py`: Matriz de decisión de Hubs Internacionales y Joyas Escondidas bajo las 6 reglas de negocio.
-  * `stage5_recommender.py`: Motor híbrido TF-IDF + Grafo de Actores Cross-Border.
-  * `actor_graph.py`: Construcción y propagación 1-Hop / 2-Hop del Grafo de Colaboración de Actores.
-  * `tmdb_client.py`: Cliente de la API de TMDB (`es-ES`) para pósters, backdrops, sinopsis, temporadas y tráilers.
-  * `paises.py`: Normalización ISO-2 / ISO-3 y buscador de países en español (`AR - Argentina`, `KR - Corea del Sur`, etc.).
-* `web/`: Frontend SPA (`index.html`, `css/netflix.css`, `js/app.js`).
-* `DOCUMENTACION_SISTEMA_NETFLIX.md`: Documentación técnica y matemática detallada.
+* `run_app.py` — Arranca el servidor y abre el navegador automáticamente.
+* `server.py` — Servidor FastAPI que responde las búsquedas, recomendaciones y métricas.
+* `main.py` — Ejecuta las 5 etapas del procesamiento de datos por consola.
+* `src/` — Módulos de datos (`stage1` a `stage5`, `actor_graph.py`, `tmdb_client.py`, `paises.py`, `generar_graficos.py`).
+* `web/` — Interfaz visual estilo Netflix (`index.html`, `css/netflix.css`, `js/app.js`).
+* `output/` — Tablas optimizadas `.parquet`, reportes `.md` y gráficos `.png`.
+* `DOCUMENTACION_SISTEMA_NETFLIX.md` — Explicación paso a paso en lenguaje claro de todo el sistema.
