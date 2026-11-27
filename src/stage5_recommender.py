@@ -198,21 +198,27 @@ class CrossBorderRecommender:
         countries_profile = user_profile.get("countries", {})
         actors_profile = user_profile.get("actors", {})
         interacted_tconsts = set(user_profile.get("interacted_tconsts", []))
+        disliked_tconsts = set(user_profile.get("disliked_tconsts", []))
+
+        pos_genres = {g: w for g, w in genres_profile.items() if w > 0.2}
+        neg_genres = {g: abs(w) for g, w in genres_profile.items() if w < -0.5}
+        pos_countries = {c: w for c, w in countries_profile.items() if w > 0.2}
+        pos_actors = {a: w for a, w in actors_profile.items() if w > 0.2}
         
         # Propagar afinidad en el Grafo de Colaboración de Actores (1-hop -> 2-hop co-estrellas)
-        suggested_co_actors = self.actor_graph.propagate_actor_affinity(actors_profile, decay_hop=0.35, top_k_neighbors=8)
+        suggested_co_actors = self.actor_graph.propagate_actor_affinity(pos_actors, decay_hop=0.35, top_k_neighbors=8)
         
-        # 1. Construir query ponderada de texto a partir del perfil (géneros, países y actores preferidos)
+        # 1. Construir query ponderada de texto a partir del perfil positivo (géneros, países y actores preferidos)
         query_tokens = []
-        for g, w in sorted(genres_profile.items(), key=lambda x: x[1], reverse=True)[:5]:
+        for g, w in sorted(pos_genres.items(), key=lambda x: x[1], reverse=True)[:5]:
             repeat = max(1, min(int(round(w)), 5))
             query_tokens.append((f"{g} ") * repeat)
             
-        for c, w in sorted(countries_profile.items(), key=lambda x: x[1], reverse=True)[:3]:
+        for c, w in sorted(pos_countries.items(), key=lambda x: x[1], reverse=True)[:3]:
             repeat = max(1, min(int(round(w)), 4))
             query_tokens.append((f"orig_{c} ") * repeat)
 
-        for a, w in sorted(actors_profile.items(), key=lambda x: x[1], reverse=True)[:4]:
+        for a, w in sorted(pos_actors.items(), key=lambda x: x[1], reverse=True)[:4]:
             repeat = max(1, min(int(round(w / 2.5)), 4))
             query_tokens.append((f"{a.replace(' ', '_')} ") * repeat)
 
@@ -229,8 +235,8 @@ class CrossBorderRecommender:
 
         # 3. Boost de Grafo Bipartito para Actores Directos (1-hop) y Co-Estrellas Propagadas (2-hop)
         actor_boost = np.zeros(len(self.df))
-        if actors_profile:
-            top_actors = sorted(actors_profile.items(), key=lambda x: x[1], reverse=True)[:6]
+        if pos_actors:
+            top_actors = sorted(pos_actors.items(), key=lambda x: x[1], reverse=True)[:6]
             for actor_name, weight in top_actors:
                 mask = self.df["actors_str"].str.contains(actor_name, case=False, na=False, regex=False).values
                 actor_boost[mask] += min(0.40, weight * 0.06)
@@ -240,9 +246,16 @@ class CrossBorderRecommender:
                 mask = self.df["actors_str"].str.contains(co_actor_name, case=False, na=False, regex=False).values
                 actor_boost[mask] += min(0.22, info["score"] * 0.04)
 
-        # 4. Excluir títulos ya interactuados para favorecer nuevo descubrimiento
-        if interacted_tconsts:
-            interacted_mask = self.df["tconst"].isin(interacted_tconsts).values
+        # Penalización suave por géneros rechazados explícitamente (👎 No me interesa)
+        neg_penalty = np.zeros(len(self.df))
+        for ng, nw in list(neg_genres.items())[:4]:
+            n_mask = self.df["genres"].str.contains(ng, case=False, na=False, regex=False).values
+            neg_penalty[n_mask] += min(0.25, nw * 0.03)
+
+        # 4. Excluir títulos ya interactuados o rechazados explícitamente
+        excluded_all = interacted_tconsts.union(disliked_tconsts)
+        if excluded_all:
+            interacted_mask = self.df["tconst"].isin(excluded_all).values
             sim_scores[interacted_mask] = 0.0
             actor_boost[interacted_mask] = 0.0
 
@@ -253,7 +266,8 @@ class CrossBorderRecommender:
                 0.35 * sim_scores +
                 0.40 * (self.df["bayesian_rating"].values / 10.0) +
                 0.15 * actor_boost +
-                0.10 * np.where(gem_mask, 0.20, 0.0)
+                0.10 * np.where(gem_mask, 0.20, 0.0) -
+                neg_penalty
             )
             final_scores[~gem_mask] *= 0.1
         else:
@@ -264,8 +278,13 @@ class CrossBorderRecommender:
                 0.30 * (self.df["bayesian_rating"].values / 10.0) +
                 0.18 * actor_boost +
                 0.05 * reach_factor +
-                netflix_boost
+                netflix_boost -
+                neg_penalty
             )
+
+        if disliked_tconsts:
+            dis_mask = self.df["tconst"].isin(disliked_tconsts).values
+            final_scores[dis_mask] = -999.0
 
         top_indices = np.argsort(final_scores)[::-1][:top_k]
         

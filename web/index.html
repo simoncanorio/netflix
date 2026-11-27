@@ -29,15 +29,53 @@
     </div>
     
     <div class="nav-right">
-      <div class="search-box">
+      <div class="search-box" id="search-box-wrap">
         <span class="search-icon">&#128269;</span>
-        <input type="text" id="search-input" class="search-input" placeholder="Buscar película, actor, género o país (ej: Argentina)...">
+        <input type="text" id="search-input" class="search-input" autocomplete="off" placeholder="Buscar película, actor, género o país (ej: Argentina)...">
         <button id="btn-clear-search" class="btn-clear-search" style="display:none;" title="Limpiar búsqueda">&#10005;</button>
+        <div id="search-autocomplete" class="autocomplete-dropdown" style="display:none;"></div>
       </div>
+
+      <button id="btn-nav-surprise" class="btn-surprise-nav" title="Elegir una joya internacional ideal según tu perfil y grafo">
+        &#127922; Sorprendeme
+      </button>
+
       <button id="btn-toggle-debug" class="btn-debug" title="Ver Grafo de Actores, Bandit y Perfil (Ctrl+D)">
         <span>&#9881; Grafo & IA</span>
         <span class="badge-signal" id="debug-score-val">0.0</span>
       </button>
+
+      <!-- SELECTOR DE PERFILES ("¿QUIÉN ESTÁ VIENDO AHORA?") -->
+      <div class="profile-menu-wrap" id="profile-menu-wrap">
+        <button id="btn-profile-switcher" class="btn-profile-switcher" title="Cambiar perfil de usuario o reiniciar aprendizaje">
+          <span id="active-profile-avatar" class="profile-avatar-pill">🎬</span>
+          <span id="active-profile-name" class="profile-name-label">Tu Perfil</span>
+          <span style="font-size:9px; color:#aaa;">&#9662;</span>
+        </button>
+        <div id="profile-dropdown" class="profile-dropdown" style="display:none;">
+          <div class="profile-dropdown-title">¿Quién está viendo ahora?</div>
+          <button class="profile-option" data-persona="custom">
+            <span class="profile-opt-avatar" style="background:#e50914;">🎬</span>
+            <div><strong>Tu Perfil Personal</strong><small>Sesión persistente en SQLite</small></div>
+          </button>
+          <button class="profile-option" data-persona="persona_kdrama_anime">
+            <span class="profile-opt-avatar" style="background:#b81d24;">🐉</span>
+            <div><strong>Fan K-Drama & Anime</strong><small>Corea, Japón, Suspenso & Sci-Fi</small></div>
+          </button>
+          <button class="profile-option" data-persona="persona_cine_ar_eu">
+            <span class="profile-opt-avatar" style="background:#1f7a3f;">🎭</span>
+            <div><strong>Cine Argentino & Autor</strong><small>Darín, Mikkelsen, España & Nórdicos</small></div>
+          </button>
+          <button class="profile-option" data-persona="persona_nuevo_cero">
+            <span class="profile-opt-avatar" style="background:#8a6d0b;">✨</span>
+            <div><strong>Invitado (Desde Cero)</strong><small>0.0 pts para probar aprendizaje en vivo</small></div>
+          </button>
+          <div class="profile-dropdown-divider"></div>
+          <button id="btn-reset-active-profile" class="profile-reset-btn">
+            &#8634; Reiniciar aprendizaje del perfil actual
+          </button>
+        </div>
+      </div>
     </div>
   </nav>
 
@@ -54,11 +92,14 @@
     
     <!-- CONTENEDOR NORMAL DE INICIO (SE OCULTA AL BUSCAR) -->
     <div id="home-catalog-view">
-      <!-- HERO BANNER DESTACADO -->
-      <section class="hero-banner">
-        <div class="hero-content">
-          <div class="hero-tag">TÍTULO DESTACADO GLOBAL • N° 1 EN STREAMING</div>
-          <h1 class="hero-title">Cargando...</h1>
+      <!-- HERO BANNER DESTACADO (CARRUSEL ROTATIVO DINÁMICO + VISTA PREVIA) -->
+      <section class="hero-banner" id="hero-banner">
+        <div id="hero-bg-video-wrap" class="hero-bg-video-wrap" style="display:none;">
+          <iframe id="hero-bg-iframe" src="" allow="autoplay; encrypted-media" tabindex="-1"></iframe>
+        </div>
+        <div class="hero-content" id="hero-content-box">
+          <div class="hero-tag" id="hero-tag-badge">TÍTULO DESTACADO GLOBAL • N° 1 EN STREAMING</div>
+          <h1 class="hero-title"><span class="skeleton-shimmer" style="display:inline-block; width:340px; height:48px; border-radius:6px;"></span></h1>
           <div class="hero-meta">
             <span class="match-pill hero-match">98% para vos</span>
             <span class="bayes-pill hero-bayes">★ 8.6 Bayes</span>
@@ -67,18 +108,36 @@
             <span class="hero-country">Internacional</span>
             <span class="hero-genres">Drama, Fantasía</span>
           </div>
-          <p class="hero-desc">Cargando sinopsis oficial en español...</p>
+          <p class="hero-desc">Preparando catálogo internacional personalizado...</p>
           <div class="hero-actions">
             <button class="btn-play btn-hero-play">&#9658; Ver Tráiler / Reproducir</button>
             <button class="btn-info btn-hero-info">&#9432; Más información</button>
+            <button class="btn-surprise-hero" id="btn-hero-surprise">&#127922; Sorprendeme</button>
           </div>
+        </div>
+
+        <div class="hero-right-controls">
+          <button id="btn-hero-preview-video" class="btn-hero-mute" style="display:none;" title="Activar/Detener vista previa de video en portada">
+            &#127902; Vista Previa
+          </button>
+          <div id="hero-dots" class="hero-dots"></div>
         </div>
         <div class="hero-fade-bottom"></div>
       </section>
 
-      <!-- CONTENEDOR DE CARRUSELES DINÁMICOS -->
+      <!-- CONTENEDOR DE CARRUSELES DINÁMICOS (CON SKELETONS DE CARGA INICIAL) -->
       <div class="main-content" id="carousels-container">
-        <!-- Carruseles inyectados por app.js -->
+        <div class="carousel-section">
+          <div class="skeleton-shimmer" style="width:280px; height:22px; border-radius:4px; margin-bottom:16px;"></div>
+          <div style="display:flex; gap:12px; overflow:hidden;">
+            <div class="skeleton-card skeleton-shimmer"></div>
+            <div class="skeleton-card skeleton-shimmer"></div>
+            <div class="skeleton-card skeleton-shimmer"></div>
+            <div class="skeleton-card skeleton-shimmer"></div>
+            <div class="skeleton-card skeleton-shimmer"></div>
+            <div class="skeleton-card skeleton-shimmer"></div>
+          </div>
+        </div>
       </div>
 
       <!-- CENTINELA PARA SCROLL INFINITO -->
@@ -96,6 +155,23 @@
           <p id="search-view-subtitle" class="search-view-subtitle">Coincidencias canónicas y recomendaciones por similitud temática y de reparto</p>
         </div>
         <button class="btn-back-home" onclick="clearSearchAndGoHome()">&#10005; Volver al Inicio</button>
+      </div>
+
+      <!-- FILTROS RÁPIDOS DE TIPO Y ORDEN EN BÚSQUEDA -->
+      <div class="search-filter-bar" id="search-filter-bar">
+        <div class="search-filter-chips">
+          <button class="filter-chip active" data-filter="all">Todo</button>
+          <button class="filter-chip" data-filter="movie">🎬 Solo Películas</button>
+          <button class="filter-chip" data-filter="series">📺 Solo Series</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <label for="search-sort-select" style="font-size:12px; color:#999;">Ordenar por:</label>
+          <select id="search-sort-select" class="netflix-select" style="font-size:12px; padding:5px 10px;">
+            <option value="relevance">Relevancia & Popularidad</option>
+            <option value="bayes">★ Mayor Nota Bayesiana</option>
+            <option value="year">🆕 Más Recientes</option>
+          </select>
+        </div>
       </div>
 
       <div id="search-actors-block" class="modal-cast-box" style="display: none; margin-bottom: 26px;">
@@ -428,33 +504,68 @@
       </div>
     </div>
 
-    <!-- TABLA DE RANKING DE POTENCIAL CON BUSCADOR RÁPIDO -->
+    <!-- OPTIMIZADOR AUTOMÁTICO DE PORTAFOLIO MULTI-PAÍS (CAPEX GLOBAL) -->
+    <div class="map-card-container" id="portfolio-optimizer-card" style="margin-bottom: 34px; border-left: 4px solid #e50914;">
+      <div class="map-card-header">
+        <div>
+          <span class="decision-badge" style="background:rgba(70,211,105,0.18); border:1px solid #46d369; color:#46d369; margin-bottom:6px;">ASIGNACIÓN ÓPTIMA DE CAPITAL MULTI-PAÍS</span>
+          <h3 style="font-size: 19px; font-weight: 800;">🌐 Optimizador de Portafolio Internacional (Escenario A + Escenario B)</h3>
+          <p style="font-size: 12.5px; color: #999;">Distribuye automáticamente un presupuesto global diversificando entre Hubs Propios y Licencias de Joyas Escondidas según costos reales TMDB y potencial sin sesgo</p>
+        </div>
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <label for="portfolio-mode-select" style="font-size:11px; color:#aaa; display:block; margin-bottom:3px;">Perfil de Cartera:</label>
+            <select id="portfolio-mode-select" class="netflix-select">
+              <option value="balanced">Equilibrado (Hubs + Joyas)</option>
+              <option value="efficiency">Máxima Eficiencia (Horas / USD)</option>
+              <option value="scale">Escala Masiva (Priorizar Hubs Tier 1)</option>
+            </select>
+          </div>
+          <div style="min-width:210px;">
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:3px;">
+              <span style="color:#aaa;">CAPEX Global:</span>
+              <strong id="portfolio-budget-val" style="color:#46d369; font-size:14px;">USD 150M</strong>
+            </div>
+            <input type="range" id="portfolio-budget-slider" min="40" max="400" step="10" value="150" style="width:100%; accent-color:#e50914; cursor:pointer;">
+          </div>
+        </div>
+      </div>
+
+      <div id="portfolio-summary-strip" class="portfolio-summary-strip"></div>
+      <div id="portfolio-stacked-bar" class="portfolio-alloc-bar"></div>
+      <div id="portfolio-cards-grid" class="portfolio-cards-grid"></div>
+    </div>
+
+    <!-- TABLA DE RANKING DE POTENCIAL CON BUSCADOR RÁPIDO Y ORDENAMIENTO POR COLUMNA -->
     <div class="ranking-table-container">
       <div style="padding: 16px 20px; background: #161616; border-bottom: 1px solid #2a2a2a; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
         <div>
           <h3 style="font-size: 16px;">Ranking de Mercados Internacionales por Índice de Potencial (2015-2024)</h3>
-          <span style="font-size: 12px; color: #888;">Haz clic en cualquier fila para cargar el país en el Inspector Ejecutivo o abrir su carrusel</span>
+          <span style="font-size: 12px; color: #888;">Haz clic en cualquier encabezado de columna para ordenar o en una fila para inspeccionar el país</span>
         </div>
         <input type="text" id="country-table-filter" class="netflix-select" placeholder="Filtrar país o estrategia..." style="width: 240px;">
       </div>
-      <table class="ranking-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>País</th>
-            <th>Índice Potencial</th>
-            <th>Títulos</th>
-            <th>Rating Bayesiano</th>
-            <th>Regiones (Reach)</th>
-            <th>Efecto Doblaje</th>
-            <th>Horas Top 10</th>
-            <th>Estrategia Recomendada</th>
-          </tr>
-        </thead>
-        <tbody id="ranking-table-body">
-          <!-- Filas de países inyectadas -->
-        </tbody>
-      </table>
+      <div style="overflow-x:auto;">
+        <table class="ranking-table" id="exec-ranking-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th class="sortable" data-sort="pais">País &#8597;</th>
+              <th class="sortable active-sort" data-sort="potential_score">Potencial &#9662;</th>
+              <th class="sortable" data-sort="bias_adjusted_score">Potencial s/Sesgo &#8597;</th>
+              <th class="sortable" data-sort="median_budget_usd_m">Costo TMDB &#8597;</th>
+              <th class="sortable" data-sort="rating_bayesiano_medio">Rating Bayes &#8597;</th>
+              <th class="sortable" data-sort="promedio_regiones">Regiones &#8597;</th>
+              <th class="sortable" data-sort="multiplicador_doblaje">Doblaje &#8597;</th>
+              <th class="sortable" data-sort="millones_horas_netflix">Horas Top 10 &#8597;</th>
+              <th>Estrategia Recomendada</th>
+            </tr>
+          </thead>
+          <tbody id="ranking-table-body">
+            <!-- Filas de países inyectadas -->
+          </tbody>
+        </table>
+      </div>
     </div>
 
   </section>
@@ -477,14 +588,18 @@
         <div class="modal-hero-content" id="modal-hero-content">
           <div id="modal-type-badge" class="modal-type-badge">PELÍCULA</div>
           <h2 id="modal-title" style="font-size: 32px; font-weight: 800; margin-bottom: 12px;">Título</h2>
-          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <button class="btn-play" id="modal-btn-play">&#9658; Reproducir / Ver Tráiler</button>
             <button class="btn-info" id="modal-btn-list">+ Agregar a Mi Lista</button>
+            <button class="btn-modal-feedback" id="modal-btn-like" title="Me encanta (+8 pts de afinidad)">&#128077; Me gusta</button>
+            <button class="btn-modal-feedback" id="modal-btn-dislike" title="No es para mí (penalizar y ocultar)">&#128078; No me interesa</button>
           </div>
         </div>
       </div>
 
       <div class="modal-body">
+        <!-- EXPLICACIÓN DE SORPRENDEME (VISIBLE CUANDO SE ABRE VÍA BOTÓN SORPRENDEME) -->
+        <div id="modal-surprise-box" class="surprise-reasons-box" style="display:none;"></div>
         <div class="modal-grid">
           <div>
             <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 16px; font-size: 13px; flex-wrap: wrap;">
@@ -537,6 +652,9 @@
             </div>
           </div>
 
+          <!-- CURVA VISUAL DE CALIFICACIÓN POR EPISODIO DE LA TEMPORADA -->
+          <div id="modal-season-sparkline" class="season-sparkline-box"></div>
+
           <div class="series-episodes-header">
             <div>
               <h3 style="font-size: 20px; font-weight: 700;">Episodios y Duraciones</h3>
@@ -547,6 +665,13 @@
           <div id="modal-episodes-list" class="episodes-list-container">
             <!-- Episodios inyectados dinámicamente -->
           </div>
+        </div>
+
+        <!-- GRILLA DE "MÁS TÍTULOS SIMILARES" DENTRO DEL MODAL -->
+        <div id="modal-similar-section" class="modal-similar-section" style="display:none;">
+          <h3 style="font-size: 19px; font-weight: 700; margin-bottom: 4px;">Más títulos similares a este</h3>
+          <p style="font-size: 12px; color: #888; margin-bottom: 14px;">Seleccionados por similitud semántica de sinopsis, atmósfera y elenco</p>
+          <div id="modal-similar-grid" class="modal-similar-grid"></div>
         </div>
 
       </div>

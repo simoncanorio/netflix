@@ -32,7 +32,7 @@ from config import (
     BASE_DIR, WEB_DIR, PARQUET_FILES, REPORTS_DIR,
     MIN_HOVER_DWELL_MS, INTERACTION_WEIGHTS, INTERACTION_DECAY, SIGNAL_THRESHOLD_GEMS
 )
-from src.paises import formatear_pais, obtener_nombre_pais, obtener_iso3, buscar_codigo_pais_por_nombre
+from src.paises import PAISES_ES, formatear_pais, obtener_nombre_pais, obtener_iso3, buscar_codigo_pais_por_nombre
 from src.stage5_recommender import CrossBorderRecommender
 from src.tmdb_client import TMDBClient, traducir_generos
 from src.session_store import SessionStore
@@ -96,13 +96,15 @@ if cast_p and cast_p.exists():
 
 class InteractionEvent(BaseModel):
     session_id: str = "default_user"
-    event_type: str                  # hover, click, modal_open, my_list, actor_click
+    event_type: str                  # hover, click, modal_open, my_list, actor_click, like, dislike, watch_progress
     tconst: str = ""
     title: str = ""
     genres: str = ""
     country_code: str = ""
     actors: str = ""
     dwell_ms: int = 0
+    progress_pct: int = 35
+    watch_label: str = ""
 
 
 def deduplicate_records_by_title(records: list, limit: int = 15) -> list:
@@ -174,6 +176,7 @@ def enrich_records_with_cast_and_country(records: list, deduplicate: bool = True
         # Sinopsis en español si está en caché
         cached_ov = TMDB_CACHE.get(tconst, {}).get("overview_es") or TMDB_CACHE.get(tconst, {}).get("overview")
         item["overview_es"] = cached_ov if cached_ov else build_spanish_fallback_synopsis(item)
+        item["trailer_key"] = TMDB_CACHE.get(tconst, {}).get("trailer_key")
 
     if deduplicate:
         return deduplicate_records_by_title(records, limit=limit)
@@ -229,13 +232,13 @@ def get_initial_catalog():
     SELECT tconst, primaryTitle, titleType, domestic_region, startYear, runtimeMinutes, genres, 
            bayesian_rating, num_regiones, numVotes, in_netflix_top10, netflix_horas_vistas
     FROM '{master_p.as_posix()}'
-    WHERE (in_netflix_top10 = 1 AND bayesian_rating >= 8.0 AND numVotes >= 100000)
+    WHERE (in_netflix_top10 = 1 AND bayesian_rating >= 7.8 AND numVotes >= 90000)
     ORDER BY netflix_horas_vistas DESC, bayesian_rating DESC
-    LIMIT 1;
+    LIMIT 12;
     """
     hero_df = con.execute(hero_query).df()
-    hero_list = enrich_records_with_cast_and_country(hero_df.to_dict(orient="records"), deduplicate=True, limit=1)
-    hero_title = hero_list[0] if hero_list else {}
+    hero_items = enrich_records_with_cast_and_country(hero_df.to_dict(orient="records"), deduplicate=True, limit=5)
+    hero_title = hero_items[0] if hero_items else {}
 
     def fetch_carousel(where_clause: str, order_clause: str, limit: int = 15, allowed_countries: set | None = None) -> list:
         q = f"""
@@ -341,6 +344,7 @@ def get_initial_catalog():
 
     return {
         "hero": hero_title,
+        "hero_items": hero_items,
         "carousels": carousels,
         "signal_threshold_gems": SIGNAL_THRESHOLD_GEMS
     }
@@ -479,6 +483,72 @@ GENRE_SEARCH_ES_TO_EN = {
     "suspenso": "Thriller", "thriller": "Thriller",
     "belico": "War", "bélico": "War", "guerra": "War",
 }
+
+
+@app.get("/api/catalog/autocomplete")
+def autocomplete_catalog(q: str = Query("", min_length=1)):
+    """Sugerencias ultrarrápidas en vivo para el buscador (Países, Actores y Títulos)."""
+    q_clean = q.strip()
+    if len(q_clean) < 2:
+        return {"suggestions": []}
+
+    suggestions = []
+    q_low = q_clean.lower()
+
+    # 1. Países coincidentes (exacto o por prefijo en español sin tildes, ej. 'Arg' -> Argentina)
+    import unicodedata
+    def _strip_acc(s: str) -> str:
+        return "".join(ch for ch in unicodedata.normalize("NFD", s.lower()) if unicodedata.category(ch) != "Mn")
+
+    q_norm = _strip_acc(q_clean)
+    matched_codes = []
+    exact_c = buscar_codigo_pais_por_nombre(q_clean)
+    if exact_c:
+        matched_codes.append(exact_c)
+    for iso_code, cname in PAISES_ES.items():
+        if iso_code not in matched_codes and _strip_acc(cname).startswith(q_norm):
+            matched_codes.append(iso_code)
+
+    for c_code in matched_codes[:2]:
+        suggestions.append({
+            "type": "country",
+            "icon": "🌍",
+            "label": formatear_pais(c_code),
+            "sub": "Explorar cine, series y elenco nacional",
+            "query": obtener_nombre_pais(c_code)
+        })
+
+    # 2. Actores principales coincidentes en el Grafo (ordenados por filmografía relevante)
+    matched_actors = sorted(
+        [(act, len(titles)) for act, titles in recommender.actor_graph.actor_to_titles.items() if q_low in act.lower()],
+        key=lambda x: x[1],
+        reverse=True
+    )[:3]
+    for act, n_films in matched_actors:
+        suggestions.append({
+            "type": "actor",
+            "icon": "🎭",
+            "label": act,
+            "sub": f"Actor / Actriz • {n_films} títulos en el Grafo",
+            "query": act
+        })
+
+    # 3. Títulos canónicos más populares que coincidan
+    df = recommender.df
+    t_matches = df[df["primaryTitle"].str.contains(q_clean, case=False, na=False, regex=False)].sort_values(
+        by=["numVotes", "bayesian_rating"], ascending=[False, False]
+    ).head(5)
+    for _, r in t_matches.iterrows():
+        suggestions.append({
+            "type": "title",
+            "icon": "📺" if str(r["titleType"]) in ["tvSeries", "tvMiniSeries"] else "🎬",
+            "label": r["primaryTitle"],
+            "sub": f"{r['startYear']} • {formatear_pais(r['domestic_region'])} • ★ {r['bayesian_rating']}",
+            "query": r["primaryTitle"],
+            "tconst": r["tconst"]
+        })
+
+    return {"suggestions": suggestions[:8]}
 
 
 @app.get("/api/catalog/search")
@@ -1044,6 +1114,15 @@ def get_title_full_details(tconst: str):
     if is_tv:
         series_data = fetch_episodes_for_series(tconst, season_num=1)
 
+    # Títulos similares para mostrar en la grilla inferior del Modal ("Más títulos similares")
+    similar_modal = []
+    seed_name = title_info.get("primaryTitle", "")
+    if seed_name:
+        sim_df = recommender.recommend(seed_name, top_k=14, force_cross_border=False)
+        if not sim_df.empty:
+            sim_df = sim_df[sim_df["tconst"] != tconst]
+            similar_modal = enrich_records_with_cast_and_country(sim_df.to_dict(orient="records"), deduplicate=True, limit=6)
+
     return {
         "tconst": tconst,
         "domestic_region": title_info.get("domestic_region", "US"),
@@ -1055,6 +1134,7 @@ def get_title_full_details(tconst: str):
         "actors": actors_list,
         "directors": directors_list,
         "co_actors_graph": co_actors_graph,
+        "similar_titles": similar_modal,
         "is_series": series_data["is_series"],
         "seasons": series_data["seasons"],
         "current_season": series_data["current_season"],
@@ -1075,6 +1155,9 @@ def get_series_season_episodes(tconst: str, season_num: int):
 @app.post("/api/user/interact")
 def record_interaction(event: InteractionEvent):
     profile = get_or_create_profile(event.session_id)
+    profile.setdefault("liked_tconsts", [])
+    profile.setdefault("disliked_tconsts", [])
+    profile.setdefault("continue_watching", [])
     
     if event.event_type == "hover" and event.dwell_ms < MIN_HOVER_DWELL_MS:
         return {
@@ -1083,7 +1166,52 @@ def record_interaction(event: InteractionEvent):
             "profile": profile
         }
 
-    weight_map = {**INTERACTION_WEIGHTS, "actor_click": 6.0}
+    # Caso especial: registrar progreso en "Continuar viendo" (tráiler o episodio reproducido)
+    if event.event_type == "watch_progress" and event.tconst:
+        cw_list = [x for x in profile["continue_watching"] if x.get("tconst") != event.tconst]
+        cw_list.insert(0, {
+            "tconst": event.tconst,
+            "title": event.title,
+            "progress_pct": max(12, min(95, int(event.progress_pct or 35))),
+            "watch_label": event.watch_label or "Visto recientemente"
+        })
+        profile["continue_watching"] = cw_list[:12]
+        session_store.save(event.session_id, profile)
+        return {
+            "status": "recorded",
+            "gems_unlocked": profile.get("signal_score", 0.0) >= SIGNAL_THRESHOLD_GEMS,
+            "profile": profile
+        }
+
+    # Caso especial: Feedback Negativo Explícito (👎 No es para mí)
+    if event.event_type == "dislike":
+        if event.tconst and event.tconst not in profile["disliked_tconsts"]:
+            profile["disliked_tconsts"].append(event.tconst)
+        if event.tconst in profile["liked_tconsts"]:
+            profile["liked_tconsts"].remove(event.tconst)
+        if event.tconst in profile["my_list"]:
+            profile["my_list"].remove(event.tconst)
+        if event.genres:
+            for genre in [g.strip() for g in event.genres.split(",") if g.strip()]:
+                profile["genres"][genre] = round(max(-8.0, profile["genres"].get(genre, 0.0) - 4.5), 2)
+        if event.country_code and event.country_code not in ["UNKNOWN", ""]:
+            profile["countries"][event.country_code] = round(max(-6.0, profile["countries"].get(event.country_code, 0.0) - 3.0), 2)
+        profile["recent_actions"].insert(0, {
+            "event": "dislike 👎",
+            "title": event.title or event.tconst,
+            "country": formatear_pais(event.country_code) if event.country_code else "",
+            "weight_added": -4.5,
+            "dwell_ms": 0
+        })
+        profile["recent_actions"] = profile["recent_actions"][:8]
+        session_store.save(event.session_id, profile)
+        return {
+            "status": "recorded",
+            "gems_unlocked": profile.get("signal_score", 0.0) >= SIGNAL_THRESHOLD_GEMS,
+            "profile": profile
+        }
+
+    weight_map = {**INTERACTION_WEIGHTS, "actor_click": 6.0, "like": 8.0}
     weight = weight_map.get(event.event_type, 1.0)
     
     for g in profile["genres"]:
@@ -1102,8 +1230,6 @@ def record_interaction(event: InteractionEvent):
             profile["countries"].get(event.country_code, 0.0) + weight, 2
         )
 
-    # Importante: En un simple hover solo dar un peso leve a actores (0.35x) para no contaminar el título del carrusel
-    # con actores de tarjetas por las que el usuario solo pasó el mouse
     actor_event_multiplier = 0.30 if event.event_type == "hover" else 1.0
     actors_str = event.actors
     if not actors_str and event.tconst in MOVIE_CAST_MAP:
@@ -1116,17 +1242,16 @@ def record_interaction(event: InteractionEvent):
             added_w = round(weight * actor_factor * actor_event_multiplier, 2)
             profile["actors"][actor_name] = round(profile["actors"].get(actor_name, 0.0) + added_w, 2)
 
-    # Propagar afinidad en el Grafo de Colaboración de Actores (Co-Estrellas 2-Hop)
+    pos_actors = {a: w for a, w in profile["actors"].items() if w > 0.2}
     profile["suggested_actors"] = recommender.actor_graph.propagate_actor_affinity(
-        profile["actors"], decay_hop=0.35, top_k_neighbors=8
+        pos_actors, decay_hop=0.35, top_k_neighbors=8
     )
 
-    # Actualizar Contextual Artwork Bandit (UCB1)
     arms = profile["bandit_arms"]
     if event.event_type == "actor_click":
         arms["actor_focus"]["pulls"] += 1
         arms["actor_focus"]["rewards"] = round(arms["actor_focus"]["rewards"] + 2.0, 2)
-    elif event.event_type in ["modal_open", "my_list"]:
+    elif event.event_type in ["modal_open", "my_list", "like"]:
         active_arm = profile.get("active_bandit_arm", "global_hit")
         arms[active_arm]["pulls"] += 1
         arms[active_arm]["rewards"] = round(arms[active_arm]["rewards"] + 1.5, 2)
@@ -1137,6 +1262,12 @@ def record_interaction(event: InteractionEvent):
 
     if event.tconst and event.tconst not in profile["interacted_tconsts"]:
         profile["interacted_tconsts"].append(event.tconst)
+
+    if event.event_type == "like" and event.tconst:
+        if event.tconst not in profile["liked_tconsts"]:
+            profile["liked_tconsts"].append(event.tconst)
+        if event.tconst in profile["disliked_tconsts"]:
+            profile["disliked_tconsts"].remove(event.tconst)
         
     if event.event_type == "my_list" and event.tconst:
         if event.tconst not in profile["my_list"]:
@@ -1146,7 +1277,7 @@ def record_interaction(event: InteractionEvent):
     profile["interaction_count"] += 1
     
     profile["recent_actions"].insert(0, {
-        "event": event.event_type,
+        "event": "like 👍" if event.event_type == "like" else event.event_type,
         "title": event.title or event.actors,
         "country": formatear_pais(event.country_code) if event.country_code else "",
         "weight_added": weight,
@@ -1163,15 +1294,115 @@ def record_interaction(event: InteractionEvent):
     }
 
 
+DEMO_PERSONAS_TEMPLATES = {
+    "persona_kdrama_anime": {
+        "label": "Fan K-Drama & Anime",
+        "avatar": "🐉",
+        "color": "#e50914",
+        "genres": {"Thriller": 16.0, "Drama": 12.0, "Animation": 14.0, "Sci-Fi": 10.0, "Action": 9.0},
+        "countries": {"KR": 18.0, "JP": 15.0, "TW": 5.0},
+        "actors": {"Song Kang-ho": 14.0, "Lee Jung-jae": 12.0, "Choi Min-sik": 9.5},
+        "active_bandit_arm": "actor_focus",
+        "my_list": ["tt6751668", "tt10919420", "tt0245429"],
+        "signal_score": 29.5
+    },
+    "persona_cine_ar_eu": {
+        "label": "Cine Argentino & Autor",
+        "avatar": "🎭",
+        "color": "#46d369",
+        "genres": {"Crime": 16.0, "Drama": 15.0, "Mystery": 12.0, "Comedy": 7.0},
+        "countries": {"AR": 18.0, "ES": 14.0, "DK": 11.0, "DE": 9.0},
+        "actors": {"Ricardo Darín": 16.0, "Mads Mikkelsen": 13.0, "Luis Tosar": 10.5},
+        "active_bandit_arm": "actor_focus",
+        "my_list": ["tt1305806", "tt3011894", "tt2106476"],
+        "signal_score": 32.0
+    },
+    "persona_nuevo_cero": {
+        "label": "Invitado (Desde Cero)",
+        "avatar": "✨",
+        "color": "#ffc107",
+        "genres": {},
+        "countries": {},
+        "actors": {},
+        "active_bandit_arm": "global_hit",
+        "my_list": [],
+        "signal_score": 0.0
+    }
+}
+
+
+def ensure_persona_seeded(session_id: str) -> dict:
+    """Inicializa los perfiles demo preconfigurados en SQLite la primera vez que se consultan."""
+    profile = get_or_create_profile(session_id)
+    if session_id in DEMO_PERSONAS_TEMPLATES and profile.get("interaction_count", 0) == 0 and profile.get("signal_score", 0.0) == 0.0:
+        tpl = DEMO_PERSONAS_TEMPLATES[session_id]
+        if tpl["signal_score"] > 0:
+            profile["genres"] = dict(tpl["genres"])
+            profile["countries"] = dict(tpl["countries"])
+            profile["actors"] = dict(tpl["actors"])
+            profile["suggested_actors"] = recommender.actor_graph.propagate_actor_affinity(
+                profile["actors"], decay_hop=0.35, top_k_neighbors=8
+            )
+            profile["active_bandit_arm"] = tpl["active_bandit_arm"]
+            profile["my_list"] = list(tpl["my_list"])
+            profile["signal_score"] = tpl["signal_score"]
+            profile["interaction_count"] = 5
+            session_store.save(session_id, profile)
+    return profile
+
+
 @app.get("/api/user/profile")
 def get_persisted_user_profile(session_id: str = Query("default_user")):
-    """Recupera el perfil persistido en SQLite tras recargar el navegador o reiniciar el servidor."""
-    profile = get_or_create_profile(session_id)
+    """Recupera el perfil persistido en SQLite tras recargar el navegador o cambiar de perfil."""
+    profile = ensure_persona_seeded(session_id)
     return {
         "session_id": session_id,
         "gems_unlocked": profile.get("signal_score", 0.0) >= SIGNAL_THRESHOLD_GEMS,
         "profile": profile
     }
+
+
+@app.post("/api/user/profile/reset")
+def reset_user_profile_endpoint(body: dict):
+    """Reinicia el aprendizaje del perfil activo a 0.0 pts (o restaura la semilla si es un perfil demo)."""
+    session_id = str(body.get("session_id", "default_user"))
+    fresh = session_store.reset(session_id)
+    if session_id in DEMO_PERSONAS_TEMPLATES and body.get("restore_demo", False):
+        fresh = ensure_persona_seeded(session_id)
+    return {
+        "status": "reset",
+        "session_id": session_id,
+        "gems_unlocked": fresh.get("signal_score", 0.0) >= SIGNAL_THRESHOLD_GEMS,
+        "profile": fresh
+    }
+
+
+@app.get("/api/user/surprise-me")
+def get_surprise_me_recommendation(session_id: str = Query("default_user")):
+    """
+    Función '🎲 Sorprendeme': selecciona una joya o éxito internacional de alta afinidad aún no visto,
+    priorizando títulos con tráiler disponible y devolviendo el desglose exacto de por qué se eligió.
+    """
+    profile = ensure_persona_seeded(session_id)
+    use_gems = profile.get("signal_score", 0.0) >= 8.0
+    rec_df = recommender.recommend_by_profile(profile, top_k=25, only_hidden_gems=use_gems)
+    if rec_df.empty:
+        rec_df = recommender.recommend_by_profile(profile, top_k=25, only_hidden_gems=False)
+
+    candidates = enrich_records_with_cast_and_country(rec_df.to_dict(orient="records"), deduplicate=True, limit=15)
+    # Priorizar candidatos con tráiler oficial en caché para una experiencia inmediata, con aleatoriedad controlada en el Top 5
+    with_trailer = [c for c in candidates if c.get("trailer_key")]
+    pool = with_trailer[:5] if len(with_trailer) >= 2 else candidates[:5]
+    if not pool:
+        return {"movie": None, "reasons": []}
+
+    chosen = pool[int(np.random.randint(0, len(pool)))]
+    reasons = [
+        f"🎯 Afinidad algorítmica: {chosen.get('match_pct', 96)}% con tu perfil actual",
+        f"🌍 Origen transfronterizo: {chosen.get('pais_origen', 'Internacional')} (★ {chosen.get('bayesian_rating')} Bayes)",
+        f"🧠 Motivo principal: {chosen.get('explanation', 'Selección por NLP de sinopsis y grafo de elenco')}"
+    ]
+    return {"movie": chosen, "reasons": reasons}
 
 
 @app.get("/api/recommender/metrics")
@@ -1189,16 +1420,20 @@ def get_recommender_offline_metrics():
 @app.post("/api/user/recommendations")
 def get_user_recommendations(request: Request, body: dict):
     session_id = body.get("session_id", "default_user")
-    profile = get_or_create_profile(session_id)
+    profile = ensure_persona_seeded(session_id)
+    disliked_set = set(profile.get("disliked_tconsts", []))
     
     rec_affinity = recommender.recommend_by_profile(profile, top_k=28, only_hidden_gems=False)
     affinity_items = enrich_records_with_cast_and_country(
-        rec_affinity.to_dict(orient="records"), deduplicate=True, limit=15
+        rec_affinity.to_dict(orient="records"), deduplicate=True, limit=18
     ) if not rec_affinity.empty else []
-    
-    top_genre = max(profile["genres"], key=profile["genres"].get) if profile["genres"] else "Drama"
+    affinity_items = [it for it in affinity_items if it.get("tconst") not in disliked_set][:15]
+
+    pos_genres = {g: w for g, w in profile.get("genres", {}).items() if w > 0}
+    pos_countries = {c: w for c, w in profile.get("countries", {}).items() if w > 0}
+    top_genre = max(pos_genres, key=pos_genres.get) if pos_genres else "Drama"
     top_genre_es = traducir_generos(top_genre)
-    top_c_code = max(profile["countries"], key=profile["countries"].get) if profile["countries"] else ""
+    top_c_code = max(pos_countries, key=pos_countries.get) if pos_countries else ""
     top_c_name = obtener_nombre_pais(top_c_code) if top_c_code else ""
 
     # Solo mostrar el nombre de un actor en el título si supera un umbral intencional alto (>= 9.0 pts)
@@ -1220,14 +1455,48 @@ def get_user_recommendations(request: Request, body: dict):
     if gems_unlocked:
         rec_gems = recommender.recommend_by_profile(profile, top_k=28, only_hidden_gems=True)
         gems_items = enrich_records_with_cast_and_country(
-            rec_gems.to_dict(orient="records"), deduplicate=True, limit=15
+            rec_gems.to_dict(orient="records"), deduplicate=True, limit=18
         ) if not rec_gems.empty else []
+        gems_items = [it for it in gems_items if it.get("tconst") not in disliked_set][:15]
+
+    # Hidratar fila "Continuar viendo" si el usuario reprodujo tráilers o episodios
+    cw_entries = profile.get("continue_watching", [])
+    cw_carousel = None
+    if cw_entries:
+        cw_ids = [x["tconst"] for x in cw_entries if re.match(r"^tt\d+$", str(x.get("tconst", ""))) and x.get("tconst") not in disliked_set]
+        if cw_ids:
+            con = get_db_cursor()
+            master_p = PARQUET_FILES["master"]
+            ph = ",".join(["?"] * len(cw_ids))
+            cw_df = con.execute(f"""
+                SELECT tconst, primaryTitle, titleType, domestic_region, startYear, runtimeMinutes, genres, 
+                       bayesian_rating, num_regiones, numVotes, in_netflix_top10, netflix_horas_vistas
+                FROM '{master_p.as_posix()}'
+                WHERE tconst IN ({ph})
+            """, cw_ids).df()
+            cw_map = {r["tconst"]: r for r in enrich_records_with_cast_and_country(cw_df.to_dict(orient="records"), deduplicate=False, limit=20)}
+            cw_items = []
+            for entry in cw_entries:
+                tc = entry.get("tconst")
+                if tc in cw_map:
+                    m_obj = dict(cw_map[tc])
+                    m_obj["progress_pct"] = entry.get("progress_pct", 35)
+                    m_obj["explanation"] = f"▶ {entry.get('watch_label', 'En curso')} ({m_obj['progress_pct']}%)"
+                    cw_items.append(m_obj)
+            if cw_items:
+                cw_carousel = {
+                    "id": "continue_watching",
+                    "title": "▶ Continuar viendo",
+                    "subtitle": "Retomá los tráilers, películas y episodios donde los dejaste",
+                    "items": cw_items
+                }
 
     return {
+        "continue_watching_carousel": cw_carousel,
         "affinity_carousel": {
             "id": "user_affinity",
             "title": explanation_title,
-            "subtitle": "Actualizado sutilmente en segundo plano mediante TF-IDF + Grafo de Co-Actuación",
+            "subtitle": "Actualizado sutilmente en segundo plano mediante NLP Sinopsis + Grafo de Co-Actuación",
             "items": affinity_items
         },
         "gems_unlocked": gems_unlocked,
@@ -1377,6 +1646,90 @@ def get_potential_countries():
             "universo_analizado": 132887,
             "horas_totales_top10": "72,712M Horas"
         }
+    }
+
+
+@app.get("/api/business/optimize-portfolio")
+def optimize_global_capex_portfolio(budget_m: float = Query(150.0, ge=20.0, le=1000.0), strategy_mode: str = Query("balanced")):
+    """
+    Optimizador Matemático de Portafolio Multi-País (CAPEX Global):
+    Distribuye un presupuesto global (ej. USD 150M) combinando:
+    - Escenario A (Hubs Propios de escala comprobada, ej. Corea del Sur / Japón)
+    - Escenario B (First-Look Deals & Joyas de altísima eficiencia USD/Hora, ej. España, Nórdicos, Argentina, India)
+    sujeto a restricciones de diversificación geográfica (máx. 38% en un único país).
+    """
+    biz = get_potential_countries()
+    ranking = [r for r in biz["ranking"] if r.get("codigo_pais") not in ("US", "GB")]
+    total_budget = float(budget_m)
+
+    scored = []
+    for r in ranking[:18]:
+        pot = float(r.get("bias_adjusted_score") or r.get("potential_score") or 65.0) / 100.0
+        eff = min(1.0, float(r.get("eficiencia_horas_por_usd_m") or 4.5) / 35.0)
+        dub = min(1.0, float(r.get("multiplicador_doblaje") or 2.0) / 4.0)
+        is_hub = "Tier 1" in str(r.get("estrategia_netflix", ""))
+
+        if strategy_mode == "efficiency":
+            utility = 0.30 * pot + 0.55 * eff + 0.15 * dub
+        elif strategy_mode == "scale":
+            utility = 0.65 * pot + 0.20 * eff + 0.15 * dub + (0.18 if is_hub else 0.0)
+        else:
+            utility = 0.48 * pot + 0.37 * eff + 0.15 * dub + (0.08 if is_hub else 0.0)
+        scored.append((utility, r))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    selected = scored[:5]
+
+    raw_weights = np.array([u ** 1.6 for u, _ in selected], dtype=float)
+    weights = raw_weights / raw_weights.sum()
+    # Cota de diversificación máxima por mercado (38%) y redistribución del excedente
+    max_cap = 0.38
+    for _ in range(3):
+        over = weights > max_cap
+        if not np.any(over):
+            break
+        excess = (weights[over] - max_cap).sum()
+        weights[over] = max_cap
+        under = ~over
+        if np.any(under):
+            weights[under] += excess * (weights[under] / weights[under].sum())
+
+    allocations = []
+    total_titles = 0
+    total_hours = 0
+    for w, (_, r) in zip(weights, selected):
+        usd_alloc = round(total_budget * float(w), 1)
+        cost_unit = max(1.2, float(r.get("median_budget_usd_m") or 4.5))
+        est_titles = max(1, int(round(usd_alloc / cost_unit)))
+        reach_f = float(r.get("promedio_regiones", 13.6)) / 13.6
+        qual_f = float(r.get("rating_bayesiano_medio", 6.51)) / 6.51
+        eff_boost = min(2.6, max(0.8, 8.0 / cost_unit))
+        est_hours = int(round(usd_alloc * 4.8 * eff_boost * reach_f * qual_f))
+        is_hub = "Tier 1" in str(r.get("estrategia_netflix", ""))
+
+        total_titles += est_titles
+        total_hours += est_hours
+        allocations.append({
+            "codigo_pais": r["codigo_pais"],
+            "pais": r["pais"],
+            "rol_cartera": "Escenario A • Hub Propio" if is_hub else "Escenario B • Licencias / Joyas",
+            "pct_presupuesto": round(float(w) * 100, 1),
+            "usd_millones": usd_alloc,
+            "costo_unitario_tmdb_m": round(cost_unit, 2),
+            "producciones_estimadas": est_titles,
+            "horas_proyectadas_m": est_hours,
+            "potencial_ajustado": r.get("bias_adjusted_score")
+        })
+
+    hollywood_equiv_titles = max(1, int(round(total_budget / 22.0)))
+    return {
+        "budget_total_usd_m": total_budget,
+        "strategy_mode": strategy_mode,
+        "total_producciones": total_titles,
+        "hollywood_producciones_equivalentes": hollywood_equiv_titles,
+        "multiplicador_volumen_vs_hollywood": round(total_titles / max(1, hollywood_equiv_titles), 2),
+        "total_horas_proyectadas_m": total_hours,
+        "allocations": allocations
     }
 
 

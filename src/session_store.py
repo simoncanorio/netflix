@@ -26,6 +26,9 @@ DEFAULT_PROFILE_TEMPLATE = {
     },
     "active_bandit_arm": "global_hit",
     "interacted_tconsts": [],
+    "liked_tconsts": [],
+    "disliked_tconsts": [],
+    "continue_watching": [],
     "my_list": [],
     "signal_score": 0.0,
     "interaction_count": 0,
@@ -104,3 +107,9 @@ class SessionStore:
                 con.commit()
             finally:
                 con.close()
+
+    def reset(self, session_id: str) -> dict:
+        """Reinicia una sesión a su estado virgen (0.0 pts) y la persiste en SQLite."""
+        fresh = json.loads(json.dumps(DEFAULT_PROFILE_TEMPLATE))
+        self.save(session_id, fresh)
+        return fresh
